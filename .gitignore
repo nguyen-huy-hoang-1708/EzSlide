@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+
+# Build output
+dist/
+
+# Uploads
+backend/uploads/
+
+# Env
+.env
