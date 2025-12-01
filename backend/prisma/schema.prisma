@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -76,7 +76,7 @@ model Element {
   width    Float?
   height   Float?
   rotation Float?
-  data     String?  @default("{}")
+  data     Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

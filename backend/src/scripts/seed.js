@@ -30,8 +30,8 @@ async function main(){
       const s2 = await prisma.slide.create({ data: { presentationId: p1.id, orderIndex: 2, title: 'Key Points' } })
       const s3 = await prisma.slide.create({ data: { presentationId: p1.id, orderIndex: 3, title: 'Conclusion' } })
       await prisma.element.createMany({ data: [
-        { slideId: s1.id, type: 'text', x: 100, y: 100, width: 400, height: 100, zIndex: 1, rotation: 0, data: JSON.stringify({ text: 'Welcome to Our Presentation', fontSize: 48, fontWeight: 'bold', color: '#333333' }) },
-        { slideId: s1.id, type: 'image', x: 100, y: 250, width: 600, height: 400, zIndex: 0, rotation: 0, data: JSON.stringify({ imageUrl: 'https://example.com/image1.jpg', alt: 'Cover image' }) }
+        { slideId: s1.id, type: 'text', x: 100, y: 100, width: 400, height: 100, zIndex: 1, rotation: 0, data: { text: 'Welcome to Our Presentation', fontSize: 48, fontWeight: 'bold', color: '#333333' } },
+        { slideId: s1.id, type: 'image', x: 100, y: 250, width: 600, height: 400, zIndex: 0, rotation: 0, data: { imageUrl: 'https://example.com/image1.jpg', alt: 'Cover image' } }
       ]})
     }
   }
