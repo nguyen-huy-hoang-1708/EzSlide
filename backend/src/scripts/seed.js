@@ -13,11 +13,11 @@ async function main(){
     if (!existing) await prisma.template.create({ data: t })
   }
   const email = 'test@example.com'
-  const password = await bcrypt.hash('password', 10)
+  const password = await bcrypt.hash('Test@123', 10)
   await prisma.user.upsert({ where: { email }, update: { password }, create: { email, password, name: 'Demo User', role: 'user' } })
   // create admin user
   const adminEmail = 'admin@example.com'
-  const adminPass = await bcrypt.hash('adminpass', 10)
+  const adminPass = await bcrypt.hash('Admin@123', 10)
   await prisma.user.upsert({ where: { email: adminEmail }, update: { password: adminPass }, create: { email: adminEmail, password: adminPass, name: 'Admin User', role: 'admin' } })
 
   // Create sample presentations & slides & elements

@@ -1,4 +1,7 @@
 import jwt from 'jsonwebtoken'
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
 
 export async function authMiddleware(req, res, next){
   const authHeader = req.headers.authorization
@@ -9,13 +12,17 @@ export async function authMiddleware(req, res, next){
     const payload = jwt.verify(token, secret)
     // attach userId to request
     req.userId = payload.userId
-    // also fetch the user and attach role
-    const { PrismaClient } = await import('@prisma/client')
-    const prisma = new PrismaClient()
-    const u = await prisma.user.findUnique({ where: { id: req.userId } })
-    if (u) req.userRole = u.role
-    next()
+    // fetch the user once using shared prisma client and attach role
+    try{
+      const u = await prisma.user.findUnique({ where: { id: req.userId } })
+      if (u) req.userRole = u.role
+    }catch(dbErr){
+      console.error('auth middleware DB error:', dbErr.message || dbErr)
+      // If DB is temporarily unreachable, return a 503 so client can retry
+      return res.status(503).json({ message: 'Service unavailable' })
+    }
+    return next()
   }catch(err){
-    res.status(401).json({ message: 'Invalid token' })
+    return res.status(401).json({ message: 'Invalid token' })
   }
 }
