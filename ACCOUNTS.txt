@@ -2,30 +2,138 @@
                     TÀI KHOẢN HỆ THỐNG
 ═══════════════════════════════════════════════════════
 
-📋 THÔNG TIN TÀI KHOẢN HIỆN TẠI:
+📋 THÔNG TIN TÀI KHOẢN:
 ───────────────────────────────────────────────────────
 
 1. TÀI KHOẢN USER (Demo)
    ├─ Email: test@example.com
    ├─ Password: Test@123
    ├─ Role: user
-   └─ Name: Demo User
+   ├─ Name: Demo User
+   └─ Presentations: 3
+      ├─ Company Overview 2025 (3 slides, 13 elements)
+      ├─ Q4 Marketing Report (2 slides, 5 elements)
+      └─ Introduction to Web Development (2 slides, 4 elements)
 
 2. TÀI KHOẢN ADMIN
    ├─ Email: admin@example.com
    ├─ Password: Admin@123
    ├─ Role: admin
-   └─ Name: Admin User
+   ├─ Name: Admin User
+   └─ Presentations: 1
+      └─ New Product Launch 2026 (1 slide, 3 elements)
 
 ───────────────────────────────────────────────────────
 
-✅ TRẠNG THÁI: ĐÃ KIỂM TRA VÀ SỬA LỖI
+📊 DATABASE OVERVIEW:
 ───────────────────────────────────────────────────────
 
-✔️  Đã cập nhật seed.js với password mới
-✔️  Đã chạy lại seed để cập nhật database  
-✔️  Đã test đăng nhập thành công cả 2 tài khoản
-✔️  Password đáp ứng yêu cầu validation (có chữ, số, ký tự đặc biệt)
+✅ Users: 2
+✅ Templates: 11 (Business, Education, Marketing, Design, Technology, Creative)
+✅ Presentations: 4
+✅ Slides: 7
+✅ Elements: 25 (text, shapes, images, charts, code blocks)
+
+───────────────────────────────────────────────────────
+
+🌐 SERVERS:
+───────────────────────────────────────────────────────
+
+Backend:  http://localhost:4000  (Node.js + Express + Prisma)
+Frontend: http://localhost:3001  (React + Vite + Tailwind)
+Debug:    http://localhost:3001/debug  (Test API connectivity)
+
+───────────────────────────────────────────────────────
+
+🎨 TEMPLATES AVAILABLE:
+───────────────────────────────────────────────────────
+
+BUSINESS (3):
+  • Business Pitch
+  • Business Pitch Deck ✅ Thumbnail
+  • Startup Pitch ✅ Thumbnail
+
+EDUCATION (2):
+  • Education Lecture
+  • School Presentation ✅ Thumbnail
+
+MARKETING (2):
+  • Marketing Strategy ✅ Thumbnail
+  • Product Launch ✅ Thumbnail
+
+DESIGN (2):
+  • Minimalist White ✅ Thumbnail
+  • Dark Mode ✅ Thumbnail
+
+TECHNOLOGY (1):
+  • Technical Report ✅ Thumbnail
+
+CREATIVE (1):
+  • Creative Portfolio ✅ Thumbnail
+
+───────────────────────────────────────────────────────
+
+🚀 HƯỚNG DẪN SỬ DỤNG:
+───────────────────────────────────────────────────────
+
+1. START SERVERS:
+   
+   Terminal 1 (Backend):
+   cd backend
+   npm run dev
+   
+   Terminal 2 (Frontend):
+   cd frontend
+   npm run dev
+
+2. TRUY CẬP:
+   
+   Mở browser: http://localhost:3001
+   Login: test@example.com / Test@123
+
+3. KIỂM TRA DATA:
+   
+   ✅ Vào /debug để xem API status
+   ✅ Vào /templates để xem 11 templates
+   ✅ Vào /presentations để xem 3 presentations
+   ✅ Vào /dashboard để xem recent slides
+
+───────────────────────────────────────────────────────
+
+🔧 TROUBLESHOOTING:
+───────────────────────────────────────────────────────
+
+Nếu thấy templates/slides rỗng:
+
+1. Check backend đang chạy:
+   curl http://localhost:4000/templates
+   → Phải trả về JSON với 11 items
+
+2. Check frontend console (F12):
+   → Xem có error CORS hoặc network không
+
+3. Test API trực tiếp:
+   Mở http://localhost:3001/debug
+   → Sẽ hiển thị templates và debug info
+
+4. Re-seed database nếu cần:
+   cd backend
+   npm run seed
+
+───────────────────────────────────────────────────────
+
+📝 ELEMENT TYPES TRONG DATABASE:
+───────────────────────────────────────────────────────
+
+✓ Text elements: fontSize, fontWeight, color, textAlign, fontFamily
+✓ Shape elements: circle, rectangle, line, star với fill, stroke, opacity
+✓ Image elements: imageUrl, alt text
+✓ Chart elements: chartType (bar), data, labels
+✓ Code elements: code snippet, language, theme
+
+───────────────────────────────────────────────────────
+
+Last Updated: 03/12/2025
 
 ───────────────────────────────────────────────────────
 

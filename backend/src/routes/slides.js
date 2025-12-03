@@ -66,4 +66,67 @@ router.get('/:id/export', async (req, res) => {
   res.send(body)
 })
 
+// Elements routes
+router.get('/:id/elements', async (req, res) => {
+  const slideId = Number(req.params.id)
+  const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
+  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
+  const elements = await prisma.element.findMany({ where: { slideId }, orderBy: { zIndex: 'asc' } })
+  res.json(elements)
+})
+
+router.post('/:id/elements', async (req, res) => {
+  const slideId = Number(req.params.id)
+  const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
+  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
+  const { type, x, y, width, height, zIndex, rotation, data } = req.body
+  const element = await prisma.element.create({ 
+    data: { 
+      slideId, 
+      type, 
+      x: x || 0, 
+      y: y || 0, 
+      width: width || 100, 
+      height: height || 100, 
+      zIndex: zIndex || 0, 
+      rotation: rotation || 0, 
+      data: JSON.stringify(data || {}) 
+    } 
+  })
+  res.json(element)
+})
+
+router.put('/:slideId/elements/:elementId', async (req, res) => {
+  const slideId = Number(req.params.slideId)
+  const elementId = Number(req.params.elementId)
+  const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
+  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
+  
+  const { type, x, y, width, height, zIndex, rotation, data } = req.body
+  const element = await prisma.element.update({ 
+    where: { id: elementId }, 
+    data: { 
+      type, 
+      x, 
+      y, 
+      width, 
+      height, 
+      zIndex, 
+      rotation, 
+      data: typeof data === 'string' ? data : JSON.stringify(data) 
+    } 
+  })
+  res.json(element)
+})
+
+router.delete('/:slideId/elements/:elementId', async (req, res) => {
+  const slideId = Number(req.params.slideId)
+  const elementId = Number(req.params.elementId)
+  const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
+  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
+  
+  await prisma.element.delete({ where: { id: elementId } })
+  res.json({ success: true })
+})
+
 export default router

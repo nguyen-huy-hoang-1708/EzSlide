@@ -5,7 +5,7 @@ import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Templates from './pages/Templates'
 import GenerateAI from './pages/GenerateAI'
-import Editor from './pages/Editor'
+import Editor from './pages/EditorNew'
 import SlidesList from './pages/SlidesList'
 import Settings from './pages/Settings'
 import Assets from './pages/Assets'
@@ -14,6 +14,7 @@ import Presentations from './pages/Presentations'
 import PresentationDetail from './pages/PresentationDetail'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminUsers from './pages/AdminUsers'
+import DebugPage from './pages/DebugPage'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/debug" element={<DebugPage />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/users" element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />

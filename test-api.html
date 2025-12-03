@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .result { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        .error { background: #fee; }
+        .success { background: #efe; }
+    </style>
+</head>
+<body>
+    <h1>EZSlide API Test</h1>
+    
+    <button onclick="testTemplates()">Test Templates API</button>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testPresentations()">Test Presentations</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const API_BASE = 'http://localhost:4000';
+        let token = null;
+
+        function log(message, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'result ' + (isError ? 'error' : 'success');
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong><br>${message}`;
+            document.getElementById('results').insertBefore(div, document.getElementById('results').firstChild);
+        }
+
+        async function testTemplates() {
+            try {
+                const res = await fetch(`${API_BASE}/templates`);
+                const data = await res.json();
+                log(`✅ Templates: ${data.length} items<br>${data.slice(0, 3).map(t => `- ${t.name} (${t.category})`).join('<br>')}`);
+            } catch (err) {
+                log(`❌ Templates Error: ${err.message}`, true);
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const res = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: 'test@example.com', password: 'Test@123' })
+                });
+                const data = await res.json();
+                if (data.token) {
+                    token = data.token;
+                    log(`✅ Login successful<br>Token: ${token.substring(0, 20)}...`);
+                } else {
+                    log(`❌ Login failed: ${data.message}`, true);
+                }
+            } catch (err) {
+                log(`❌ Login Error: ${err.message}`, true);
+            }
+        }
+
+        async function testPresentations() {
+            if (!token) {
+                log('❌ Please login first!', true);
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/presentations`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                log(`✅ Presentations: ${data.length} items<br>${data.map(p => `- ${p.title}`).join('<br>')}`);
+            } catch (err) {
+                log(`❌ Presentations Error: ${err.message}`, true);
+            }
+        }
+
+        // Auto test on load
+        window.onload = () => {
+            testTemplates();
+        };
+    </script>
+</body>
+</html>
