@@ -16,7 +16,8 @@ const __dirname = path.dirname(__filename)
 
 const app = express()
 app.use(cors())
-app.use(bodyParser.json())
+app.use(bodyParser.json({ limit: '500mb' }))
+app.use(bodyParser.urlencoded({ limit: '500mb', extended: true }))
 
 app.use('/auth', authRoutes)
 app.use('/slides', slideRoutes)

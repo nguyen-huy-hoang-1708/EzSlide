@@ -217,26 +217,48 @@ router.post('/:id/elements', async (req, res) => {
 })
 
 router.put('/:slideId/elements/:elementId', async (req, res) => {
-  const slideId = Number(req.params.slideId)
-  const elementId = Number(req.params.elementId)
-  const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
-  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
-  
-  const { type, x, y, width, height, zIndex, rotation, data } = req.body
-  const element = await prisma.element.update({ 
-    where: { id: elementId }, 
-    data: { 
-      type, 
-      x, 
-      y, 
-      width, 
-      height, 
-      zIndex, 
-      rotation, 
-      data: typeof data === 'string' ? data : JSON.stringify(data) 
-    } 
-  })
-  res.json(element)
+  try {
+    const slideId = Number(req.params.slideId)
+    const elementId = Number(req.params.elementId)
+    
+    console.log('=== UPDATE ELEMENT ===')
+    console.log('Slide ID:', slideId, 'Element ID:', elementId)
+    console.log('Request body:', req.body)
+    
+    const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
+    if (!slide || slide.presentation.userId !== req.userId) {
+      console.log('Slide not found or unauthorized')
+      return res.status(404).json({ message: 'Not found' })
+    }
+    
+    const { type, x, y, width, height, zIndex, rotation, data } = req.body
+    
+    // Build update data - only include defined fields
+    const updateData = {}
+    if (type !== undefined) updateData.type = type
+    if (x !== undefined) updateData.x = x
+    if (y !== undefined) updateData.y = y
+    if (width !== undefined) updateData.width = width
+    if (height !== undefined) updateData.height = height
+    if (zIndex !== undefined) updateData.zIndex = zIndex
+    if (rotation !== undefined) updateData.rotation = rotation
+    if (data !== undefined) {
+      updateData.data = typeof data === 'string' ? data : JSON.stringify(data)
+    }
+    
+    console.log('Update data:', updateData)
+    
+    const element = await prisma.element.update({ 
+      where: { id: elementId }, 
+      data: updateData
+    })
+    
+    console.log('Updated element:', element)
+    res.json(element)
+  } catch (error) {
+    console.error('Error updating element:', error)
+    res.status(500).json({ message: 'Failed to update element', error: error.message })
+  }
 })
 
 router.delete('/:slideId/elements/:elementId', async (req, res) => {

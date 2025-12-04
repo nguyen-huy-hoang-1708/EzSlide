@@ -15,22 +15,35 @@ router.get('/', async (req, res) => {
     include: { 
       slides: { 
         orderBy: { orderIndex: 'asc' },
-        select: { id: true, title: true, background: true, backgroundImage: true }
+        select: { id: true, title: true, content: true }
       } 
     }
   })
   
   // Add thumbnail (first slide's background) and slide count to each presentation
-  const enrichedList = list.map(p => ({
-    id: p.id,
-    title: p.title,
-    createdAt: p.createdAt,
-    updatedAt: p.updatedAt,
-    userId: p.userId,
-    slideCount: p.slides.length,
-    thumbnail: p.slides[0]?.backgroundImage || p.slides[0]?.background || '#f3f4f6',
-    firstSlideId: p.slides[0]?.id || null
-  }))
+  const enrichedList = list.map(p => {
+    let thumbnail = '#f3f4f6'
+    
+    if (p.slides[0]?.content) {
+      try {
+        const content = JSON.parse(p.slides[0].content)
+        thumbnail = content.backgroundImage || content.background || '#f3f4f6'
+      } catch (e) {
+        // If parsing fails, use default
+      }
+    }
+    
+    return {
+      id: p.id,
+      title: p.title,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      userId: p.userId,
+      slideCount: p.slides.length,
+      thumbnail,
+      firstSlideId: p.slides[0]?.id || null
+    }
+  })
   
   res.json(enrichedList)
 })
@@ -59,11 +72,38 @@ router.put('/:id', async (req, res) => {
 })
 
 router.delete('/:id', async (req, res) => {
-  const id = Number(req.params.id)
-  const p = await prisma.presentation.findUnique({ where: { id } })
-  if (!p || p.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
-  await prisma.presentation.delete({ where: { id } })
-  res.json({ ok: true })
+  try {
+    const id = Number(req.params.id)
+    const p = await prisma.presentation.findUnique({ 
+      where: { id },
+      include: { slides: { include: { elements: true } } }
+    })
+    
+    if (!p || p.userId !== req.userId) {
+      return res.status(404).json({ message: 'Not found' })
+    }
+    
+    // Cascade delete: elements -> slides -> presentation
+    for (const slide of p.slides) {
+      // Delete all elements of this slide
+      await prisma.element.deleteMany({
+        where: { slideId: slide.id }
+      })
+    }
+    
+    // Delete all slides
+    await prisma.slide.deleteMany({
+      where: { presentationId: id }
+    })
+    
+    // Finally delete presentation
+    await prisma.presentation.delete({ where: { id } })
+    
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('Delete presentation error:', error)
+    res.status(500).json({ message: 'Failed to delete presentation' })
+  }
 })
 
 export default router

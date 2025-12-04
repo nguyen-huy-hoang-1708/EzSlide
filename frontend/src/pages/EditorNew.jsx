@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import PresentationMode from '../components/PresentationMode'
 
 export default function Editor(){
   const { id } = useParams() // This is slideId
@@ -24,6 +25,9 @@ export default function Editor(){
   // Tool state
   const [activeTool, setActiveTool] = useState(null) // 'text', 'image', 'shape'
   const [saving, setSaving] = useState(false)
+  
+  // Presentation mode
+  const [isPresentationMode, setIsPresentationMode] = useState(false)
   
   // Drag state
   const [isDragging, setIsDragging] = useState(false)
@@ -67,12 +71,38 @@ export default function Editor(){
 
       // 2. Load elements for current slide
       const elemRes = await api.get(`/slides/${id}/elements`)
-      setElements(elemRes.data || [])
+      const loadedElements = (elemRes.data || []).map(elem => ({
+        ...elem,
+        data: typeof elem.data === 'string' ? JSON.parse(elem.data) : elem.data
+      }))
+      setElements(loadedElements)
       
       // 3. Load the presentation to get all slides
       if (currentSlide.presentationId) {
         const presRes = await api.get(`/presentations/${currentSlide.presentationId}`)
         setPresentation(presRes.data)
+        
+        // Check if this is a template sample - warn user
+        if (presRes.data.title?.includes('Sample')) {
+          const shouldCopy = window.confirm(
+            '⚠️ You are editing a template sample!\n\n' +
+            'Changes will affect the template for all users.\n\n' +
+            'Click OK to create your own copy, or Cancel to edit the template directly.'
+          )
+          
+          if (shouldCopy) {
+            // Use template to create new presentation
+            const useRes = await api.post(`/templates/${presRes.data.templateId}/use`, {
+              title: presRes.data.title.replace(' - Sample', '')
+            })
+            
+            // Navigate to the new presentation's first slide
+            if (useRes.data.slides?.[0]?.id) {
+              navigate(`/editor/${useRes.data.slides[0].id}`, { replace: true })
+              return // Stop current load
+            }
+          }
+        }
         
         // Sort slides by orderIndex
         const slides = (presRes.data.slides || []).sort((a, b) => a.orderIndex - b.orderIndex)
@@ -93,26 +123,156 @@ export default function Editor(){
 
   async function saveSlide() {
     if (!slide) return
+    
+    console.log('=== SAVE DEBUG ===')
+    console.log('Slide ID:', slide.id)
+    console.log('Presentation:', presentation)
+    console.log('Elements to save:', elements)
+    
     setSaving(true)
     try {
-      const content = JSON.stringify({ background, backgroundImage })
+      // Send content as object, not string (backend will stringify it)
+      const contentObj = { 
+        background, 
+        backgroundImage,
+        elements: [] // Backend handles elements separately
+      }
+      
+      console.log('Saving slide content...', contentObj)
       await api.put(`/slides/${slide.id}`, { 
         title: slide.title,
-        content 
+        content: contentObj  // Send as object
       })
+      console.log('✅ Slide content saved')
       
-      // Save all elements
+      // Get current elements in database
+      console.log('Fetching current elements from DB...')
+      const currentElemsRes = await api.get(`/slides/${slide.id}/elements`)
+      const currentElems = currentElemsRes.data || []
+      console.log('Current elements in DB:', currentElems)
+      
+      // Find elements to delete (in DB but not in current state)
+      const currentElemIds = elements.map(e => e.id).filter(Boolean)
+      const toDelete = currentElems.filter(e => !currentElemIds.includes(e.id))
+      
+      console.log('Elements to delete:', toDelete.length)
+      
+      // Delete removed elements
+      for (const elem of toDelete) {
+        console.log('Deleting element:', elem.id)
+        await api.delete(`/slides/${slide.id}/elements/${elem.id}`)
+      }
+      
+      console.log('Saving/updating', elements.length, 'elements...')
+      
+      // Save/update all current elements
       for (const elem of elements) {
         if (elem.id) {
-          await api.put(`/slides/${slide.id}/elements/${elem.id}`, elem)
+          // Update existing element
+          console.log('Updating element:', elem.id, elem)
+          const updatePayload = {
+            type: elem.type,
+            x: elem.x,
+            y: elem.y,
+            width: elem.width,
+            height: elem.height,
+            zIndex: elem.zIndex || 0,
+            rotation: elem.rotation || 0,
+            data: elem.data
+          }
+          console.log('Update payload:', updatePayload)
+          await api.put(`/slides/${slide.id}/elements/${elem.id}`, updatePayload)
         } else {
-          await api.post(`/slides/${slide.id}/elements`, elem)
+          // Create new element
+          console.log('Creating new element:', elem.type, elem)
+          const createPayload = {
+            type: elem.type,
+            x: elem.x,
+            y: elem.y,
+            width: elem.width,
+            height: elem.height,
+            zIndex: elem.zIndex || 0,
+            rotation: elem.rotation || 0,
+            data: elem.data
+          }
+          console.log('Create payload:', createPayload)
+          const res = await api.post(`/slides/${slide.id}/elements`, createPayload)
+          elem.id = res.data.id
+          console.log('Created with ID:', elem.id)
         }
       }
+      
+      console.log('Reloading elements from DB...')
+      // Reload elements from database to ensure sync
+      const elemRes = await api.get(`/slides/${slide.id}/elements`)
+      const reloadedElements = (elemRes.data || []).map(elem => ({
+        ...elem,
+        data: typeof elem.data === 'string' ? JSON.parse(elem.data) : elem.data
+      }))
+      setElements(reloadedElements)
+      console.log('Reloaded', reloadedElements.length, 'elements')
+      
+      // Update allSlides thumbnail for sidebar
+      const updatedSlides = [...allSlides]
+      const currentIdx = updatedSlides.findIndex(s => s.id === slide.id)
+      if (currentIdx >= 0) {
+        updatedSlides[currentIdx] = {
+          ...updatedSlides[currentIdx],
+          content: JSON.stringify(contentObj)
+        }
+        setAllSlides(updatedSlides)
+      }
+      
+      alert('✅ Slide saved successfully!')
     } catch (err) {
       console.error('Save failed:', err)
+      alert('❌ Failed to save slide: ' + (err.response?.data?.message || err.message))
     }
     setSaving(false)
+  }
+
+  // Export presentation as JSON
+  function exportPresentation() {
+    if (!presentation || !allSlides.length) {
+      alert('No presentation to export')
+      return
+    }
+
+    const exportData = {
+      presentation: {
+        title: presentation.title,
+        createdAt: presentation.createdAt,
+        updatedAt: presentation.updatedAt
+      },
+      slides: allSlides.map(s => {
+        let content = {}
+        try {
+          content = JSON.parse(s.content || '{}')
+        } catch (e) {
+          console.error('Failed to parse slide content')
+        }
+        return {
+          title: s.title,
+          orderIndex: s.orderIndex,
+          content,
+          // Note: elements would need to be fetched separately if needed
+        }
+      })
+    }
+
+    // Create download link
+    const dataStr = JSON.stringify(exportData, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${presentation.title || 'presentation'}_${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    alert('✅ Presentation exported successfully!')
   }
 
   function addTextElement() {
@@ -304,6 +464,133 @@ export default function Editor(){
     setSaving(false)
   }
 
+  // Add icon element
+  function addIconElement() {
+    const icons = ['😀', '😍', '🎉', '⭐', '❤️', '👍', '🔥', '💡', '✅', '❌', '➡️', '⬅️', '⬆️', '⬇️', '🏠', '📧', '📱', '💼', '🎯', '🚀']
+    const icon = prompt(`Enter emoji or choose from:\n${icons.join(' ')}`)
+    if (!icon) return
+    
+    const newElement = {
+      type: 'text',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 100,
+      zIndex: elements.length,
+      rotation: 0,
+      data: {
+        text: icon,
+        fontSize: 64,
+        fontFamily: 'Arial',
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        color: '#000000',
+        textAlign: 'center'
+      }
+    }
+    setElements([...elements, newElement])
+    setSelectedElement(newElement)
+    setSelectedElementIndex(elements.length)
+  }
+
+  // Delete current slide
+  async function deleteCurrentSlide() {
+    if (!slide || allSlides.length <= 1) {
+      alert('Cannot delete the last slide')
+      return
+    }
+    
+    if (!confirm(`Delete slide "${slide.title}"?`)) return
+    
+    try {
+      await api.delete(`/slides/${slide.id}`)
+      // Navigate to previous or next slide
+      const nextSlide = allSlides[currentSlideIndex + 1] || allSlides[currentSlideIndex - 1]
+      if (nextSlide) {
+        navigate(`/editor/${nextSlide.id}`)
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err) {
+      console.error('Failed to delete slide:', err)
+      alert('Failed to delete slide')
+    }
+  }
+
+  // Duplicate current slide
+  async function duplicateSlide() {
+    if (!slide) return
+    
+    try {
+      const content = JSON.stringify({ background, backgroundImage })
+      const res = await api.post('/slides', {
+        title: `${slide.title} (Copy)`,
+        content,
+        presentationId: slide.presentationId,
+        orderIndex: slide.orderIndex + 1
+      })
+      
+      // Copy elements
+      for (const elem of elements) {
+        await api.post(`/slides/${res.data.id}/elements`, {
+          type: elem.type,
+          x: elem.x,
+          y: elem.y,
+          width: elem.width,
+          height: elem.height,
+          zIndex: elem.zIndex,
+          rotation: elem.rotation,
+          data: elem.data
+        })
+      }
+      
+      navigate(`/editor/${res.data.id}`)
+    } catch (err) {
+      console.error('Failed to duplicate slide:', err)
+      alert('Failed to duplicate slide')
+    }
+  }
+
+  // Add new blank slide
+  async function addNewSlide() {
+    if (!presentation) return
+    
+    try {
+      const res = await api.post('/slides', {
+        title: 'New Slide',
+        content: JSON.stringify({ background: '#ffffff' }),
+        presentationId: presentation.id,
+        orderIndex: allSlides.length
+      })
+      navigate(`/editor/${res.data.id}`)
+    } catch (err) {
+      console.error('Failed to add slide:', err)
+      alert('Failed to add slide')
+    }
+  }
+
+  // Move slide up/down in order
+  async function moveSlide(direction) {
+    if (!slide) return
+    
+    const targetIndex = direction === 'up' ? currentSlideIndex - 1 : currentSlideIndex + 1
+    if (targetIndex < 0 || targetIndex >= allSlides.length) return
+    
+    const targetSlide = allSlides[targetIndex]
+    
+    try {
+      // Swap order indices
+      await api.put(`/slides/${slide.id}`, { orderIndex: targetSlide.orderIndex })
+      await api.put(`/slides/${targetSlide.id}`, { orderIndex: slide.orderIndex })
+      
+      // Reload
+      loadSlide()
+    } catch (err) {
+      console.error('Failed to move slide:', err)
+      alert('Failed to move slide')
+    }
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {/* Top Toolbar */}
@@ -327,9 +614,22 @@ export default function Editor(){
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
-          <button className="px-4 py-2 border rounded hover:bg-gray-50">Export</button>
-          <button className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
-            Start Presentation
+          <button 
+            onClick={exportPresentation}
+            className="px-4 py-2 border rounded hover:bg-gray-50"
+          >
+            Export
+          </button>
+          <button 
+            onClick={() => setIsPresentationMode(true)}
+            disabled={allSlides.length === 0}
+            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Trình chiếu
           </button>
         </div>
       </div>
@@ -345,6 +645,11 @@ export default function Editor(){
           <button onClick={addImageElement} className="p-2 hover:bg-gray-100 rounded" title="Add Image">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <button onClick={addIconElement} className="p-2 hover:bg-gray-100 rounded" title="Add Icon/Emoji">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
           <div className="relative group">
@@ -387,17 +692,71 @@ export default function Editor(){
             
             <button 
               onClick={() => updateSelectedElementData({ fontWeight: selectedElement.data.fontWeight === 'bold' ? 'normal' : 'bold' })}
-              className={`px-2 py-1 border rounded font-bold ${selectedElement.data.fontWeight === 'bold' ? 'bg-gray-200' : ''}`}
+              className={`px-2 py-1 border rounded font-bold text-sm ${selectedElement.data.fontWeight === 'bold' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Bold"
             >
               B
             </button>
             
             <button 
               onClick={() => updateSelectedElementData({ fontStyle: selectedElement.data.fontStyle === 'italic' ? 'normal' : 'italic' })}
-              className={`px-2 py-1 border rounded italic ${selectedElement.data.fontStyle === 'italic' ? 'bg-gray-200' : ''}`}
+              className={`px-2 py-1 border rounded italic text-sm ${selectedElement.data.fontStyle === 'italic' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Italic"
             >
               I
             </button>
+            
+            <button 
+              onClick={() => updateSelectedElementData({ textDecoration: selectedElement.data.textDecoration === 'underline' ? 'none' : 'underline' })}
+              className={`px-2 py-1 border rounded underline text-sm ${selectedElement.data.textDecoration === 'underline' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Underline"
+            >
+              U
+            </button>
+            
+            <div className="w-px h-6 bg-gray-300" />
+            
+            <button 
+              onClick={() => updateSelectedElementData({ textAlign: 'left' })}
+              className={`p-1 border rounded ${selectedElement.data.textAlign === 'left' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Align Left"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16" />
+              </svg>
+            </button>
+            
+            <button 
+              onClick={() => updateSelectedElementData({ textAlign: 'center' })}
+              className={`p-1 border rounded ${selectedElement.data.textAlign === 'center' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Align Center"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M4 18h16" />
+              </svg>
+            </button>
+            
+            <button 
+              onClick={() => updateSelectedElementData({ textAlign: 'right' })}
+              className={`p-1 border rounded ${selectedElement.data.textAlign === 'right' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Align Right"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M14 12h6M4 18h16" />
+              </svg>
+            </button>
+            
+            <button 
+              onClick={() => updateSelectedElementData({ textAlign: 'justify' })}
+              className={`p-1 border rounded ${selectedElement.data.textAlign === 'justify' ? 'bg-indigo-100 border-indigo-500' : ''}`}
+              title="Justify"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            
+            <div className="w-px h-6 bg-gray-300" />
             
             <input 
               type="color" 
@@ -406,16 +765,6 @@ export default function Editor(){
               className="w-8 h-8 border rounded cursor-pointer"
               title="Text Color"
             />
-            
-            <select 
-              value={selectedElement.data.textAlign || 'left'}
-              onChange={(e) => updateSelectedElementData({ textAlign: e.target.value })}
-              className="border rounded px-2 py-1 text-sm"
-            >
-              <option value="left">Left</option>
-              <option value="center">Center</option>
-              <option value="right">Right</option>
-            </select>
           </div>
         )}
 
@@ -460,43 +809,114 @@ export default function Editor(){
         {allSlides.length > 0 && (
           <div className="w-52 bg-gray-50 border-r overflow-y-auto">
             <div className="p-3">
-              <div className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                Slides ({allSlides.length})
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-semibold text-gray-500 uppercase">
+                  Slides ({allSlides.length})
+                </div>
+                <button
+                  onClick={addNewSlide}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="Add New Slide"
+                >
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
               </div>
               <div className="space-y-2">
                 {allSlides.map((s, idx) => (
                   <div
                     key={s.id}
-                    onClick={() => switchToSlide(s.id)}
                     className={`
-                      cursor-pointer p-2 rounded border-2 transition-all
+                      group relative p-2 rounded border-2 transition-all
                       ${s.id === slide?.id 
                         ? 'border-indigo-500 bg-indigo-50 shadow-sm' 
                         : 'border-gray-200 hover:border-gray-300 bg-white'
                       }
                     `}
                   >
-                    <div className="text-xs font-medium text-gray-700 mb-1">
-                      {idx + 1}. {s.title}
-                    </div>
                     <div 
-                      className="w-full h-20 bg-gray-100 rounded border border-gray-200 overflow-hidden"
-                      style={(() => {
-                        try {
-                          const content = JSON.parse(s.content || '{}')
-                          if (content.backgroundImage) {
-                            return {
-                              backgroundImage: `url(${content.backgroundImage})`,
-                              backgroundSize: 'cover',
-                              backgroundPosition: 'center'
+                      onClick={() => switchToSlide(s.id)}
+                      className="cursor-pointer"
+                    >
+                      <div className="text-xs font-medium text-gray-700 mb-1">
+                        {idx + 1}. {s.title}
+                      </div>
+                      <div 
+                        className="w-full h-20 bg-gray-100 rounded border border-gray-200 overflow-hidden"
+                        style={(() => {
+                          try {
+                            const content = JSON.parse(s.content || '{}')
+                            if (content.backgroundImage) {
+                              return {
+                                backgroundImage: `url(${content.backgroundImage})`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center'
+                              }
                             }
+                            return { backgroundColor: content.background || '#ffffff' }
+                          } catch {
+                            return { backgroundColor: '#ffffff' }
                           }
-                          return { backgroundColor: content.background || '#ffffff' }
-                        } catch {
-                          return { backgroundColor: '#ffffff' }
-                        }
-                      })()}
-                    />
+                        })()}
+                      />
+                    </div>
+                    
+                    {/* Slide Actions */}
+                    {s.id === slide?.id && (
+                      <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            moveSlide('up')
+                          }}
+                          disabled={idx === 0}
+                          className="p-1 bg-white border rounded hover:bg-gray-100 disabled:opacity-30"
+                          title="Move Up"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            moveSlide('down')
+                          }}
+                          disabled={idx === allSlides.length - 1}
+                          className="p-1 bg-white border rounded hover:bg-gray-100 disabled:opacity-30"
+                          title="Move Down"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            duplicateSlide()
+                          }}
+                          className="p-1 bg-white border rounded hover:bg-gray-100"
+                          title="Duplicate"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteCurrentSlide()
+                          }}
+                          className="p-1 bg-white border rounded hover:bg-red-100 text-red-600"
+                          title="Delete"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -581,6 +1001,7 @@ export default function Editor(){
                       fontFamily: elem.data.fontFamily,
                       fontWeight: elem.data.fontWeight,
                       fontStyle: elem.data.fontStyle,
+                      textDecoration: elem.data.textDecoration || 'none',
                       color: elem.data.color,
                       textAlign: elem.data.textAlign,
                       width: '100%',
@@ -806,6 +1227,21 @@ export default function Editor(){
           )}
         </div>
       </div>
+
+      {/* Presentation Mode */}
+      {isPresentationMode && allSlides.length > 0 && (
+        <PresentationMode
+          slides={allSlides}
+          currentIndex={currentSlideIndex}
+          onClose={() => setIsPresentationMode(false)}
+          onNavigate={(index) => {
+            setCurrentSlideIndex(index)
+            if (allSlides[index]) {
+              switchToSlide(allSlides[index].id)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
