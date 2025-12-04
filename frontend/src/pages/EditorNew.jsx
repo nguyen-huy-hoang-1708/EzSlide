@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 export default function Editor(){
   const { id } = useParams() // This is slideId
   const navigate = useNavigate()
+  const canvasRef = useRef(null)
   
   // Presentation & Slides
   const [presentation, setPresentation] = useState(null)
@@ -23,6 +24,12 @@ export default function Editor(){
   // Tool state
   const [activeTool, setActiveTool] = useState(null) // 'text', 'image', 'shape'
   const [saving, setSaving] = useState(false)
+  
+  // Drag state
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const [elementStart, setElementStart] = useState({ x: 0, y: 0 })
+  const [selectedElementIndex, setSelectedElementIndex] = useState(null)
 
   useEffect(() => {
     loadSlide()
@@ -129,6 +136,7 @@ export default function Editor(){
     }
     setElements([...elements, newElement])
     setSelectedElement(newElement)
+    setSelectedElementIndex(elements.length)
   }
 
   function addImageElement() {
@@ -150,6 +158,7 @@ export default function Editor(){
     }
     setElements([...elements, newElement])
     setSelectedElement(newElement)
+    setSelectedElementIndex(elements.length)
   }
 
   function addShapeElement(shapeType) {
@@ -171,37 +180,50 @@ export default function Editor(){
     }
     setElements([...elements, newElement])
     setSelectedElement(newElement)
+    setSelectedElementIndex(elements.length)
   }
 
   function updateSelectedElement(updates) {
-    if (!selectedElement) return
+    if (selectedElementIndex === null) return
     
-    setElements(elements.map(elem => 
-      elem === selectedElement 
-        ? { ...elem, ...updates }
-        : elem
-    ))
-    setSelectedElement({ ...selectedElement, ...updates })
+    setElements(prev => {
+      const updated = [...prev]
+      updated[selectedElementIndex] = {
+        ...updated[selectedElementIndex],
+        ...updates
+      }
+      return updated
+    })
+    
+    setSelectedElement(prev => ({ ...prev, ...updates }))
   }
 
   function updateSelectedElementData(dataUpdates) {
-    if (!selectedElement) return
+    if (selectedElementIndex === null) return
     
-    const updated = {
-      ...selectedElement,
-      data: { ...selectedElement.data, ...dataUpdates }
-    }
+    setElements(prev => {
+      const updated = [...prev]
+      updated[selectedElementIndex] = {
+        ...updated[selectedElementIndex],
+        data: {
+          ...updated[selectedElementIndex].data,
+          ...dataUpdates
+        }
+      }
+      return updated
+    })
     
-    setElements(elements.map(elem => 
-      elem === selectedElement ? updated : elem
-    ))
-    setSelectedElement(updated)
+    setSelectedElement(prev => ({
+      ...prev,
+      data: { ...prev.data, ...dataUpdates }
+    }))
   }
 
   function deleteSelectedElement() {
-    if (!selectedElement) return
-    setElements(elements.filter(elem => elem !== selectedElement))
+    if (selectedElementIndex === null) return
+    setElements(elements.filter((_, idx) => idx !== selectedElementIndex))
     setSelectedElement(null)
+    setSelectedElementIndex(null)
   }
 
   function moveElement(direction) {
@@ -212,6 +234,74 @@ export default function Editor(){
       y: selectedElement.y + (direction === 'up' ? -step : direction === 'down' ? step : 0)
     }
     updateSelectedElement(updates)
+  }
+  
+  // Drag handlers
+  function handleMouseDown(e, elem, idx) {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+    setSelectedElement(elem)
+    setSelectedElementIndex(idx)
+    setDragStart({ x: e.clientX, y: e.clientY })
+    setElementStart({ x: elem.x, y: elem.y })
+  }
+  
+  function handleMouseMove(e) {
+    if (!isDragging || selectedElementIndex === null) return
+    
+    const deltaX = e.clientX - dragStart.x
+    const deltaY = e.clientY - dragStart.y
+    
+    const newX = elementStart.x + deltaX
+    const newY = elementStart.y + deltaY
+    
+    // Update element at specific index
+    setElements(prev => {
+      const updated = [...prev]
+      updated[selectedElementIndex] = {
+        ...updated[selectedElementIndex],
+        x: newX,
+        y: newY
+      }
+      return updated
+    })
+    
+    // Update selected element
+    setSelectedElement(prev => ({
+      ...prev,
+      x: newX,
+      y: newY
+    }))
+  }
+  
+  function handleMouseUp() {
+    if (isDragging) {
+      setIsDragging(false)
+    }
+  }
+  
+  // Save element changes immediately
+  async function saveCurrentElement() {
+    if (!selectedElement || !slide) return
+    setSaving(true)
+    try {
+      if (selectedElement.id) {
+        await api.put(`/slides/${slide.id}/elements/${selectedElement.id}`, selectedElement)
+      } else {
+        const res = await api.post(`/slides/${slide.id}/elements`, selectedElement)
+        // Update element with new ID
+        setElements(elements.map(elem => 
+          elem === selectedElement ? { ...selectedElement, id: res.data.id } : elem
+        ))
+        setSelectedElement({ ...selectedElement, id: res.data.id })
+      }
+      alert('Element saved successfully!')
+    } catch (err) {
+      console.error('Failed to save element:', err)
+      alert('Failed to save element')
+    }
+    setSaving(false)
   }
 
   return (
@@ -417,6 +507,7 @@ export default function Editor(){
         {/* Canvas */}
         <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
           <div 
+            ref={canvasRef}
             className="relative bg-white shadow-2xl"
             style={{
               width: '960px',
@@ -429,30 +520,56 @@ export default function Editor(){
                 backgroundColor: background
               })
             }}
-            onClick={() => setSelectedElement(null)}
+            onClick={() => {
+              setSelectedElement(null)
+              setSelectedElementIndex(null)
+            }}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
           >
             {/* Render Elements */}
             {elements.map((elem, idx) => (
               <div
                 key={idx}
-                className={`absolute cursor-move ${selectedElement === elem ? 'ring-2 ring-indigo-500' : ''}`}
+                className={`absolute ${selectedElement === elem ? 'ring-2 ring-indigo-500' : ''}`}
                 style={{
                   left: elem.x,
                   top: elem.y,
                   width: elem.width,
                   height: elem.height,
                   transform: `rotate(${elem.rotation || 0}deg)`,
-                  zIndex: elem.zIndex
+                  zIndex: elem.zIndex,
+                  userSelect: 'none',
+                  pointerEvents: 'auto',
+                  cursor: isDragging && selectedElementIndex === idx ? 'grabbing' : 'grab'
                 }}
+                onMouseDown={(e) => handleMouseDown(e, elem, idx)}
                 onClick={(e) => {
                   e.stopPropagation()
-                  setSelectedElement(elem)
+                  if (!isDragging) {
+                    setSelectedElement(elem)
+                    setSelectedElementIndex(idx)
+                  }
                 }}
                 onDoubleClick={(e) => {
+                  e.stopPropagation()
                   if (elem.type === 'text') {
                     const newText = prompt('Edit text:', elem.data.text)
                     if (newText !== null) {
-                      updateSelectedElementData({ text: newText })
+                      setElements(prev => {
+                        const updated = [...prev]
+                        updated[idx] = {
+                          ...updated[idx],
+                          data: { ...updated[idx].data, text: newText }
+                        }
+                        return updated
+                      })
+                      setSelectedElement({
+                        ...elem,
+                        data: { ...elem.data, text: newText }
+                      })
+                      setSelectedElementIndex(idx)
                     }
                   }
                 }}
@@ -469,7 +586,8 @@ export default function Editor(){
                       width: '100%',
                       height: '100%',
                       padding: '8px',
-                      overflow: 'hidden'
+                      overflow: 'hidden',
+                      pointerEvents: 'none'
                     }}
                   >
                     {elem.data.text}
@@ -481,11 +599,12 @@ export default function Editor(){
                     src={elem.data.imageUrl} 
                     alt={elem.data.alt}
                     className="w-full h-full object-cover"
+                    style={{ pointerEvents: 'none' }}
                   />
                 )}
 
                 {elem.type === 'shape' && (
-                  <div className="w-full h-full">
+                  <div className="w-full h-full" style={{ pointerEvents: 'none' }}>
                     {elem.data.shape === 'rectangle' && (
                       <div 
                         className="w-full h-full"
@@ -650,7 +769,15 @@ export default function Editor(){
                 </div>
               )}
 
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t space-y-2">
+                <button 
+                  onClick={saveCurrentElement}
+                  disabled={saving}
+                  className="w-full px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 font-medium"
+                >
+                  {saving ? 'Saving...' : '💾 Save Element'}
+                </button>
+                
                 <button 
                   onClick={deleteSelectedElement}
                   className="w-full px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
@@ -666,7 +793,7 @@ export default function Editor(){
       {/* Keyboard shortcuts info */}
       <div className="bg-gray-800 text-white text-xs px-4 py-2 flex items-center justify-between">
         <div className="flex gap-4">
-          <span>💡 Tips: Double-click text to edit • Drag elements to move • Use properties panel to adjust</span>
+          <span>💡 Tips: Drag elements to move • Use properties panel to adjust • Click "Save Element" to update</span>
         </div>
         <div className="flex gap-2">
           {selectedElement && (

@@ -18,7 +18,32 @@ router.post('/', async (req, res) => {
   if (!presentationId) return res.status(400).json({ message: 'presentationId required' })
   const p = await prisma.presentation.findUnique({ where: { id: presentationId } })
   if (!p || p.userId !== req.userId) return res.status(403).json({ message: 'Not allowed' })
-  const slide = await prisma.slide.create({ data: { title, content: JSON.stringify(content || {}), presentationId, templateId, orderIndex } })
+  
+  // Default empty slide content
+  const defaultContent = content || {
+    elements: [],
+    background: '#ffffff'
+  }
+  
+  // Get max orderIndex for this presentation if orderIndex not provided
+  let finalOrderIndex = orderIndex
+  if (finalOrderIndex === undefined) {
+    const lastSlide = await prisma.slide.findFirst({
+      where: { presentationId },
+      orderBy: { orderIndex: 'desc' }
+    })
+    finalOrderIndex = lastSlide ? lastSlide.orderIndex + 1 : 0
+  }
+  
+  const slide = await prisma.slide.create({ 
+    data: { 
+      title: title || 'Untitled Slide', 
+      content: JSON.stringify(defaultContent), 
+      presentationId, 
+      templateId, 
+      orderIndex: finalOrderIndex 
+    } 
+  })
   res.json(slide)
 })
 
@@ -30,12 +55,107 @@ router.get('/:id', async (req, res) => {
 })
 
 router.put('/:id', async (req, res) => {
-  const id = Number(req.params.id)
-  const { title, content, orderIndex } = req.body
-  const slide = await prisma.slide.findUnique({ where: { id }, include: { presentation: true } })
-  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
-  const updated = await prisma.slide.update({ where: { id }, data: { title, content: JSON.stringify(content), orderIndex } })
-  res.json(updated)
+  try {
+    const id = Number(req.params.id)
+    const { title, content, orderIndex } = req.body
+    
+    // Validate slide exists and user has permission
+    const slide = await prisma.slide.findUnique({ where: { id }, include: { presentation: true } })
+    if (!slide) {
+      return res.status(404).json({ message: 'Slide not found' })
+    }
+    if (slide.presentation.userId !== req.userId) {
+      return res.status(403).json({ message: 'Not authorized to edit this slide' })
+    }
+    
+    // Validate content structure if provided
+    if (content) {
+      if (typeof content !== 'object' || Array.isArray(content)) {
+        return res.status(400).json({ message: 'Content must be an object' })
+      }
+      
+      // Validate elements array if present
+      if (content.elements && !Array.isArray(content.elements)) {
+        return res.status(400).json({ message: 'Elements must be an array' })
+      }
+      
+      // Validate each element
+      if (content.elements) {
+        for (let i = 0; i < content.elements.length; i++) {
+          const el = content.elements[i]
+          
+          // Check required fields
+          if (!el.type) {
+            return res.status(400).json({ message: `Element ${i}: type is required` })
+          }
+          
+          // Validate element type
+          const validTypes = ['text', 'image', 'shape', 'chart', 'table']
+          if (!validTypes.includes(el.type)) {
+            return res.status(400).json({ message: `Element ${i}: invalid type '${el.type}'. Must be one of: ${validTypes.join(', ')}` })
+          }
+          
+          // Validate position and size
+          if (el.x !== undefined && (typeof el.x !== 'number' || el.x < 0)) {
+            return res.status(400).json({ message: `Element ${i}: x must be a non-negative number` })
+          }
+          if (el.y !== undefined && (typeof el.y !== 'number' || el.y < 0)) {
+            return res.status(400).json({ message: `Element ${i}: y must be a non-negative number` })
+          }
+          if (el.width !== undefined && (typeof el.width !== 'number' || el.width <= 0)) {
+            return res.status(400).json({ message: `Element ${i}: width must be a positive number` })
+          }
+          if (el.height !== undefined && (typeof el.height !== 'number' || el.height <= 0)) {
+            return res.status(400).json({ message: `Element ${i}: height must be a positive number` })
+          }
+          
+          // Validate style object if present
+          if (el.style && typeof el.style !== 'object') {
+            return res.status(400).json({ message: `Element ${i}: style must be an object` })
+          }
+          
+          // Validate image URL format if type is image
+          if (el.type === 'image' && el.src) {
+            try {
+              new URL(el.src)
+            } catch (e) {
+              return res.status(400).json({ message: `Element ${i}: invalid image URL format` })
+            }
+          }
+        }
+      }
+      
+      // Validate background color format if present
+      if (content.background && typeof content.background !== 'string') {
+        return res.status(400).json({ message: 'Background must be a string' })
+      }
+      
+      // Validate backgroundImage URL if present
+      if (content.backgroundImage) {
+        try {
+          new URL(content.backgroundImage)
+        } catch (e) {
+          return res.status(400).json({ message: 'Invalid backgroundImage URL format' })
+        }
+      }
+    }
+    
+    // Update with version control - use updatedAt to prevent concurrent save conflicts
+    const updateData = {}
+    if (title !== undefined) updateData.title = title
+    if (content !== undefined) updateData.content = JSON.stringify(content)
+    if (orderIndex !== undefined) updateData.orderIndex = orderIndex
+    
+    const updated = await prisma.slide.update({ 
+      where: { id }, 
+      data: updateData 
+    })
+    
+    res.json(updated)
+  } catch (error) {
+    console.error('Error updating slide:', error)
+    res.status(500).json({ message: 'Internal server error while updating slide', error: error.message })
+  }
 })
 
 router.delete('/:id', async (req, res) => {

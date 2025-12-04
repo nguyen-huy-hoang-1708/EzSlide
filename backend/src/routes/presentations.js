@@ -7,10 +7,32 @@ const router = Router()
 
 router.use(authMiddleware)
 
-// List presentations for current user
+// List presentations for current user with thumbnails and metadata
 router.get('/', async (req, res) => {
-  const list = await prisma.presentation.findMany({ where: { userId: req.userId }, orderBy: { updatedAt: 'desc' } })
-  res.json(list)
+  const list = await prisma.presentation.findMany({ 
+    where: { userId: req.userId }, 
+    orderBy: { updatedAt: 'desc' },
+    include: { 
+      slides: { 
+        orderBy: { orderIndex: 'asc' },
+        select: { id: true, title: true, background: true, backgroundImage: true }
+      } 
+    }
+  })
+  
+  // Add thumbnail (first slide's background) and slide count to each presentation
+  const enrichedList = list.map(p => ({
+    id: p.id,
+    title: p.title,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    userId: p.userId,
+    slideCount: p.slides.length,
+    thumbnail: p.slides[0]?.backgroundImage || p.slides[0]?.background || '#f3f4f6',
+    firstSlideId: p.slides[0]?.id || null
+  }))
+  
+  res.json(enrichedList)
 })
 
 router.post('/', async (req, res) => {
