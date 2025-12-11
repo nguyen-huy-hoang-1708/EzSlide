@@ -188,11 +188,26 @@ router.get('/:id/export', async (req, res) => {
 
 // Elements routes
 router.get('/:id/elements', async (req, res) => {
-  const slideId = Number(req.params.id)
-  const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
-  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
-  const elements = await prisma.element.findMany({ where: { slideId }, orderBy: { zIndex: 'asc' } })
-  res.json(elements)
+  try {
+    const slideId = Number(req.params.id)
+    const slide = await prisma.slide.findUnique({ where: { id: slideId }, include: { presentation: true } })
+    if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
+    
+    // Query without orderBy to avoid "Out of sort memory" error with large data
+    const elements = await prisma.element.findMany({ 
+      where: { slideId },
+      // Remove orderBy if data is too large
+      // Sort in JavaScript instead
+    })
+    
+    // Sort in JavaScript to avoid MySQL sort buffer overflow
+    elements.sort((a, b) => a.zIndex - b.zIndex)
+    
+    res.json(elements)
+  } catch (err) {
+    console.error('Error fetching elements:', err)
+    res.status(500).json({ message: 'Failed to fetch elements', error: err.message })
+  }
 })
 
 router.post('/:id/elements', async (req, res) => {

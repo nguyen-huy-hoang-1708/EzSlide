@@ -25,6 +25,7 @@ export default function Editor(){
   // Tool state
   const [activeTool, setActiveTool] = useState(null) // 'text', 'image', 'shape'
   const [saving, setSaving] = useState(false)
+  const [showIconPicker, setShowIconPicker] = useState(false)
   
   // Presentation mode
   const [isPresentationMode, setIsPresentationMode] = useState(false)
@@ -34,10 +35,87 @@ export default function Editor(){
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [elementStart, setElementStart] = useState({ x: 0, y: 0 })
   const [selectedElementIndex, setSelectedElementIndex] = useState(null)
+  
+  // Resize state
+  const [isResizing, setIsResizing] = useState(false)
+  const [resizeHandle, setResizeHandle] = useState(null) // 'se', 'e', 's'
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 })
 
   useEffect(() => {
     loadSlide()
   }, [id])
+
+  // Handle paste image from clipboard
+  useEffect(() => {
+    const handlePaste = async (e) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        
+        // Check if it's an image
+        if (item.type.indexOf('image') !== -1) {
+          e.preventDefault()
+          
+          const blob = item.getAsFile()
+          
+          // Check file size (limit to 10MB)
+          if (blob.size > 10 * 1024 * 1024) {
+            alert('⚠️ Ảnh quá lớn! Vui lòng chọn ảnh nhỏ hơn 10MB')
+            return
+          }
+          
+          const reader = new FileReader()
+          
+          reader.onload = (event) => {
+            const base64 = event.target.result
+            
+            // Check base64 size
+            const base64Size = base64.length
+            console.log(`Pasted image size: ${(base64Size / 1024 / 1024).toFixed(2)}MB`)
+            
+            if (base64Size > 5 * 1024 * 1024) {
+              alert('⚠️ Ảnh sau khi encode quá lớn! Hãy thử ảnh nhỏ hơn hoặc nén ảnh trước.')
+              return
+            }
+            
+            // Add image element to canvas
+            const newImage = {
+              type: 'image',
+              x: 100,
+              y: 100,
+              width: 400,
+              height: 300,
+              zIndex: elements.length,
+              rotation: 0,
+              data: {
+                imageUrl: base64,
+                alt: 'Pasted image'
+              }
+            }
+            
+            setElements(prev => [...prev, newImage])
+            setSelectedElementIndex(elements.length)
+            setSelectedElement(newImage)
+            
+            console.log('✅ Image pasted successfully')
+          }
+          
+          reader.onerror = (error) => {
+            console.error('Error reading image:', error)
+            alert('❌ Lỗi khi đọc ảnh!')
+          }
+          
+          reader.readAsDataURL(blob)
+          break
+        }
+      }
+    }
+
+    document.addEventListener('paste', handlePaste)
+    return () => document.removeEventListener('paste', handlePaste)
+  }, [elements])
 
   async function loadSlide() {
     if (id === 'new') {
@@ -167,6 +245,21 @@ export default function Editor(){
       
       // Save/update all current elements
       for (const elem of elements) {
+        // Ensure data is an object, not string
+        const dataObj = typeof elem.data === 'string' ? JSON.parse(elem.data) : elem.data
+        
+        // Check if element has large base64 image
+        if (elem.type === 'image' && dataObj.imageUrl?.startsWith('data:')) {
+          const base64Size = dataObj.imageUrl.length
+          console.log(`Element ${elem.id || 'new'} image size: ${(base64Size / 1024 / 1024).toFixed(2)}MB`)
+          
+          if (base64Size > 5 * 1024 * 1024) {
+            alert(`⚠️ Ảnh quá lớn! Element có ảnh ${(base64Size / 1024 / 1024).toFixed(2)}MB.\nVui lòng xóa ảnh này và dùng ảnh nhỏ hơn.`)
+            setSaving(false)
+            return
+          }
+        }
+        
         if (elem.id) {
           // Update existing element
           console.log('Updating element:', elem.id, elem)
@@ -178,10 +271,17 @@ export default function Editor(){
             height: elem.height,
             zIndex: elem.zIndex || 0,
             rotation: elem.rotation || 0,
-            data: elem.data
+            data: dataObj  // Always send as object
           }
           console.log('Update payload:', updatePayload)
-          await api.put(`/slides/${slide.id}/elements/${elem.id}`, updatePayload)
+          try {
+            await api.put(`/slides/${slide.id}/elements/${elem.id}`, updatePayload)
+          } catch (err) {
+            console.error('Failed to update element:', err)
+            alert(`❌ Lỗi khi cập nhật element: ${err.response?.data?.message || err.message}`)
+            setSaving(false)
+            return
+          }
         } else {
           // Create new element
           console.log('Creating new element:', elem.type, elem)
@@ -193,12 +293,19 @@ export default function Editor(){
             height: elem.height,
             zIndex: elem.zIndex || 0,
             rotation: elem.rotation || 0,
-            data: elem.data
+            data: dataObj  // Always send as object
           }
           console.log('Create payload:', createPayload)
-          const res = await api.post(`/slides/${slide.id}/elements`, createPayload)
-          elem.id = res.data.id
-          console.log('Created with ID:', elem.id)
+          try {
+            const res = await api.post(`/slides/${slide.id}/elements`, createPayload)
+            elem.id = res.data.id
+            console.log('Created with ID:', elem.id)
+          } catch (err) {
+            console.error('Failed to create element:', err)
+            alert(`❌ Lỗi khi tạo element: ${err.response?.data?.message || err.message}`)
+            setSaving(false)
+            return
+          }
         }
       }
       
@@ -408,6 +515,45 @@ export default function Editor(){
   }
   
   function handleMouseMove(e) {
+    // Handle resize
+    if (isResizing && selectedElementIndex !== null) {
+      const deltaX = e.clientX - resizeStart.x
+      const deltaY = e.clientY - resizeStart.y
+      
+      let newWidth = resizeStart.width
+      let newHeight = resizeStart.height
+      
+      if (resizeHandle === 'se') {
+        // Bottom-right corner
+        newWidth = Math.max(50, resizeStart.width + deltaX)
+        newHeight = Math.max(50, resizeStart.height + deltaY)
+      } else if (resizeHandle === 'e') {
+        // Right edge
+        newWidth = Math.max(50, resizeStart.width + deltaX)
+      } else if (resizeHandle === 's') {
+        // Bottom edge
+        newHeight = Math.max(50, resizeStart.height + deltaY)
+      }
+      
+      setElements(prev => {
+        const updated = [...prev]
+        updated[selectedElementIndex] = {
+          ...updated[selectedElementIndex],
+          width: newWidth,
+          height: newHeight
+        }
+        return updated
+      })
+      
+      setSelectedElement(prev => ({
+        ...prev,
+        width: newWidth,
+        height: newHeight
+      }))
+      return
+    }
+    
+    // Handle drag
     if (!isDragging || selectedElementIndex === null) return
     
     const deltaX = e.clientX - dragStart.x
@@ -439,6 +585,10 @@ export default function Editor(){
     if (isDragging) {
       setIsDragging(false)
     }
+    if (isResizing) {
+      setIsResizing(false)
+      setResizeHandle(null)
+    }
   }
   
   // Save element changes immediately
@@ -466,14 +616,14 @@ export default function Editor(){
 
   // Add icon element
   function addIconElement() {
-    const icons = ['😀', '😍', '🎉', '⭐', '❤️', '👍', '🔥', '💡', '✅', '❌', '➡️', '⬅️', '⬆️', '⬇️', '🏠', '📧', '📱', '💼', '🎯', '🚀']
-    const icon = prompt(`Enter emoji or choose from:\n${icons.join(' ')}`)
-    if (!icon) return
-    
+    setShowIconPicker(true)
+  }
+
+  function insertIcon(icon) {
     const newElement = {
       type: 'text',
-      x: 100,
-      y: 100,
+      x: 200,
+      y: 200,
       width: 100,
       height: 100,
       zIndex: elements.length,
@@ -489,8 +639,28 @@ export default function Editor(){
       }
     }
     setElements([...elements, newElement])
-    setSelectedElement(newElement)
-    setSelectedElementIndex(elements.length)
+    setShowIconPicker(false)
+  }
+
+  function insertShape(shapeType, color = '#3b82f6') {
+    const newElement = {
+      type: 'shape',
+      x: 200,
+      y: 200,
+      width: 150,
+      height: 150,
+      zIndex: elements.length,
+      rotation: 0,
+      data: {
+        shape: shapeType,
+        fill: color,
+        stroke: '#000000',
+        strokeWidth: 0,
+        opacity: 1
+      }
+    }
+    setElements([...elements, newElement])
+    setShowIconPicker(false)
   }
 
   // Delete current slide
@@ -997,18 +1167,20 @@ export default function Editor(){
                 {elem.type === 'text' && (
                   <div
                     style={{
-                      fontSize: elem.data.fontSize,
-                      fontFamily: elem.data.fontFamily,
-                      fontWeight: elem.data.fontWeight,
-                      fontStyle: elem.data.fontStyle,
+                      fontSize: elem.data.fontSize || 16,
+                      fontFamily: elem.data.fontFamily || 'Arial',
+                      fontWeight: elem.data.fontWeight || 'normal',
+                      fontStyle: elem.data.fontStyle || 'normal',
                       textDecoration: elem.data.textDecoration || 'none',
-                      color: elem.data.color,
-                      textAlign: elem.data.textAlign,
+                      color: elem.data.color || '#000000',
+                      textAlign: elem.data.textAlign || 'left',
+                      lineHeight: elem.data.lineHeight || 1.5,
                       width: '100%',
                       height: '100%',
                       padding: '8px',
                       overflow: 'hidden',
-                      pointerEvents: 'none'
+                      pointerEvents: 'none',
+                      whiteSpace: 'pre-wrap'
                     }}
                   >
                     {elem.data.text}
@@ -1069,9 +1241,51 @@ export default function Editor(){
                 {/* Resize handles */}
                 {selectedElement === elem && (
                   <>
-                    <div className="absolute -right-1 -bottom-1 w-3 h-3 bg-indigo-500 rounded-full cursor-nwse-resize" />
-                    <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-500 rounded-full cursor-ew-resize" />
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-indigo-500 rounded-full cursor-ns-resize" />
+                    {/* Bottom-right corner */}
+                    <div 
+                      className="absolute -right-1 -bottom-1 w-3 h-3 bg-indigo-500 rounded-full cursor-nwse-resize z-10"
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        setIsResizing(true)
+                        setResizeHandle('se')
+                        setResizeStart({
+                          x: e.clientX,
+                          y: e.clientY,
+                          width: elem.width,
+                          height: elem.height
+                        })
+                      }}
+                    />
+                    {/* Right edge */}
+                    <div 
+                      className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-500 rounded-full cursor-ew-resize z-10"
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        setIsResizing(true)
+                        setResizeHandle('e')
+                        setResizeStart({
+                          x: e.clientX,
+                          y: e.clientY,
+                          width: elem.width,
+                          height: elem.height
+                        })
+                      }}
+                    />
+                    {/* Bottom edge */}
+                    <div 
+                      className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-indigo-500 rounded-full cursor-ns-resize z-10"
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                        setIsResizing(true)
+                        setResizeHandle('s')
+                        setResizeStart({
+                          x: e.clientX,
+                          y: e.clientY,
+                          width: elem.width,
+                          height: elem.height
+                        })
+                      }}
+                    />
                   </>
                 )}
               </div>
@@ -1241,6 +1455,105 @@ export default function Editor(){
             }
           }}
         />
+      )}
+
+      {/* Icon & Shape Picker Modal */}
+      {showIconPicker && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]" onClick={() => setShowIconPicker(false)}>
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold">Chọn Icon hoặc Shape</h3>
+              <button onClick={() => setShowIconPicker(false)} className="text-gray-500 hover:text-gray-700">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Shapes Section */}
+            <div className="mb-6">
+              <h4 className="font-semibold mb-3 text-gray-700">Shapes</h4>
+              <div className="grid grid-cols-4 gap-3">
+                <button
+                  onClick={() => insertShape('rectangle', '#3b82f6')}
+                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-all flex flex-col items-center gap-2"
+                >
+                  <div className="w-16 h-16 bg-blue-500 rounded"></div>
+                  <span className="text-sm">Hình vuông</span>
+                </button>
+                
+                <button
+                  onClick={() => insertShape('circle', '#10b981')}
+                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all flex flex-col items-center gap-2"
+                >
+                  <div className="w-16 h-16 bg-green-500 rounded-full"></div>
+                  <span className="text-sm">Hình tròn</span>
+                </button>
+                
+                <button
+                  onClick={() => insertShape('triangle', '#f59e0b')}
+                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-amber-500 hover:bg-amber-50 transition-all flex flex-col items-center gap-2"
+                >
+                  <div className="w-0 h-0 border-l-8 border-r-8 border-b-16 border-l-transparent border-r-transparent border-b-amber-500"></div>
+                  <span className="text-sm">Tam giác</span>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    const newElement = {
+                      type: 'shape',
+                      x: 200,
+                      y: 200,
+                      width: 150,
+                      height: 150,
+                      zIndex: elements.length,
+                      rotation: 45,
+                      data: {
+                        shape: 'rectangle',
+                        fill: '#ec4899',
+                        stroke: '#000000',
+                        strokeWidth: 0,
+                        opacity: 1
+                      }
+                    }
+                    setElements([...elements, newElement])
+                    setShowIconPicker(false)
+                  }}
+                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-pink-500 hover:bg-pink-50 transition-all flex flex-col items-center gap-2"
+                >
+                  <div className="w-16 h-16 bg-pink-500 transform rotate-45"></div>
+                  <span className="text-sm">Hình thoi</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Icons Section */}
+            <div>
+              <h4 className="font-semibold mb-3 text-gray-700">Icons & Emojis</h4>
+              <div className="grid grid-cols-8 gap-2">
+                {['😀', '😍', '🎉', '⭐', '❤️', '👍', '🔥', '💡', '✅', '❌', '➡️', '⬅️', '⬆️', '⬇️', '🏠', '📧', '📱', '💼', '🎯', '🚀', '🎨', '📊', '📈', '📉', '🔔', '⚙️', '🔍', '📝', '📅', '⏰', '💰', '🎁'].map(icon => (
+                  <button
+                    key={icon}
+                    onClick={() => insertIcon(icon)}
+                    className="text-4xl p-3 hover:bg-gray-100 rounded-lg transition-all transform hover:scale-110"
+                    title={icon}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t">
+              <button
+                onClick={() => setShowIconPicker(false)}
+                className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+              >
+                Huỷ
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -41,7 +41,8 @@ router.get('/', async (req, res) => {
       userId: p.userId,
       slideCount: p.slides.length,
       thumbnail,
-      firstSlideId: p.slides[0]?.id || null
+      firstSlideId: p.slides[0]?.id || null,
+      slides: p.slides
     }
   })
   
