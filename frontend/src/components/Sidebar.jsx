@@ -32,6 +32,11 @@ export default function Sidebar() {
           <span className="text-lg">📊</span>
           <span>ダッシュボード</span>
         </NavLink>
+        <NavLink to="/ai" className={({isActive}) => isActive ? 'flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 text-purple-600 font-medium border border-purple-200' : 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50'}>
+          <span className="text-lg">🤖</span>
+          <span>AIスライド</span>
+          <span className="ml-auto text-xs bg-purple-500 text-white px-2 py-0.5 rounded-full">NEW</span>
+        </NavLink>
         <NavLink to="/slides" className={({isActive}) => isActive ? 'flex items-center gap-3 px-3 py-2.5 rounded-lg bg-indigo-50 text-indigo-600 font-medium' : 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-gray-50'}>
           <span className="text-lg">📄</span>
           <span>スライド</span>
