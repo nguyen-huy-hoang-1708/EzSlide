@@ -40,6 +40,7 @@ router.post('/generate', authMiddleware, async (req, res) => {
  * - language: vi|en (default: vi)
  * - includeImages: boolean (default: false)
  * - exportFormat: json|pptx (default: pptx)
+ * - themeName: professional|modern|elegant|vibrant (default: professional)
  */
 router.post('/generate-slides', authMiddleware, async (req, res) => {
   try {
@@ -49,7 +50,8 @@ router.post('/generate-slides', authMiddleware, async (req, res) => {
       tone = 'professional',
       language = 'vi',
       includeImages = false,
-      exportFormat = 'pptx'
+      exportFormat = 'pptx',
+      themeName = 'professional'
     } = req.body
 
     // Validate
@@ -100,7 +102,8 @@ router.post('/generate-slides', authMiddleware, async (req, res) => {
     console.log('Generating PowerPoint file...')
     const pptxResult = await pptxService.generatePresentation(slidePlans, {
       title: topic,
-      author: req.user?.username || 'Anonymous'
+      author: req.user?.username || 'Anonymous',
+      themeName: themeName
     })
 
     // Bước 3: Lưu thông tin vào database (optional - có thể lưu vào presentations)

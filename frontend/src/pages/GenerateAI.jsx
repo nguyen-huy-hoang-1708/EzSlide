@@ -9,6 +9,7 @@ export default function GenerateAI(){
   const [tone, setTone] = useState('professional')
   const [language, setLanguage] = useState('vi')
   const [exportFormat, setExportFormat] = useState('pptx')
+  const [themeName, setThemeName] = useState('professional')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
@@ -51,7 +52,8 @@ export default function GenerateAI(){
         tone,
         language,
         includeImages: false,
-        exportFormat
+        exportFormat,
+        themeName
       })
       
       if (res.data.success) {
@@ -218,6 +220,84 @@ export default function GenerateAI(){
               <option value="pptx">📄 PowerPoint (.pptx)</option>
               <option value="json">📋 JSON Only</option>
             </select>
+          </div>
+        </div>
+
+        {/* Theme Selection */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-3">🎨 Chọn Theme (Mẫu màu sắc)</label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Professional Theme */}
+            <button
+              type="button"
+              onClick={() => setThemeName('professional')}
+              className={`p-3 rounded-lg border-2 transition ${
+                themeName === 'professional'
+                  ? 'border-purple-500 bg-purple-50'
+                  : 'border-gray-200 hover:border-purple-300'
+              }`}
+              disabled={loading}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600"></div>
+                <span className="text-xs font-semibold">Professional</span>
+              </div>
+              <div className="text-xs text-gray-500">Màu xanh tím chuyên nghiệp</div>
+            </button>
+
+            {/* Modern Theme */}
+            <button
+              type="button"
+              onClick={() => setThemeName('modern')}
+              className={`p-3 rounded-lg border-2 transition ${
+                themeName === 'modern'
+                  ? 'border-gray-700 bg-gray-50'
+                  : 'border-gray-200 hover:border-gray-400'
+              }`}
+              disabled={loading}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-gray-700 to-gray-900"></div>
+                <span className="text-xs font-semibold">Modern Dark</span>
+              </div>
+              <div className="text-xs text-gray-500">Tone tối hiện đại</div>
+            </button>
+
+            {/* Elegant Theme */}
+            <button
+              type="button"
+              onClick={() => setThemeName('elegant')}
+              className={`p-3 rounded-lg border-2 transition ${
+                themeName === 'elegant'
+                  ? 'border-yellow-600 bg-yellow-50'
+                  : 'border-gray-200 hover:border-yellow-400'
+              }`}
+              disabled={loading}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-yellow-600 to-yellow-800"></div>
+                <span className="text-xs font-semibold">Elegant Gold</span>
+              </div>
+              <div className="text-xs text-gray-500">Vàng sang trọng</div>
+            </button>
+
+            {/* Vibrant Theme */}
+            <button
+              type="button"
+              onClick={() => setThemeName('vibrant')}
+              className={`p-3 rounded-lg border-2 transition ${
+                themeName === 'vibrant'
+                  ? 'border-pink-500 bg-pink-50'
+                  : 'border-gray-200 hover:border-pink-300'
+              }`}
+              disabled={loading}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-4 h-4 rounded-full bg-gradient-to-br from-pink-500 to-red-500"></div>
+                <span className="text-xs font-semibold">Vibrant</span>
+              </div>
+              <div className="text-xs text-gray-500">Màu sắc sống động</div>
+            </button>
           </div>
         </div>
 
