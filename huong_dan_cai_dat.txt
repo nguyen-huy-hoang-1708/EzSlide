@@ -1,0 +1,104 @@
+EzSlide - Setup Guide (macOS/Linux/Windows)
+===========================================
+
+1) Clone code
+-------------
+# SSH
+git clone git@github.com:nguyen-huy-hoang-1708/EzSlide.git
+# or HTTPS
+# git clone https://github.com/nguyen-huy-hoang-1708/EzSlide.git
+cd EzSlide
+
+2) Prerequisites
+----------------
+- Node.js >= 18
+- npm >= 9
+- MySQL >= 8 (or MariaDB 10.6+)
+- (Optional) Ollama for local AI slide generation
+
+3) Database setup (MySQL)
+-------------------------
+Create database and user (example):
+  mysql -u root -p
+  CREATE DATABASE ezslide CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  CREATE USER 'ezslide'@'localhost' IDENTIFIED BY 'ezslidepass';
+  GRANT ALL PRIVILEGES ON ezslide.* TO 'ezslide'@'localhost';
+  FLUSH PRIVILEGES;
+
+Database URL format:
+  mysql://USER:PASSWORD@HOST:PORT/DATABASE
+Example:
+  mysql://ezslide:ezslidepass@localhost:3306/ezslide
+
+4) Backend setup
+----------------
+cd backend
+cp .env.example .env
+# Edit .env to set DATABASE_URL, JWT_SECRET, PORT (default 4000)
+# Optional: OLLAMA_HOST, OLLAMA_MODEL (e.g., llama3.2)
+
+Install deps:
+  npm install
+
+Generate Prisma client:
+  npx prisma generate
+
+Run migrations:
+  npx prisma migrate dev --name init
+
+Seed data (users, etc.):
+  npm run seed
+
+Start backend (dev):
+  npm run dev
+# Backend runs at http://localhost:4000
+
+5) Frontend setup
+-----------------
+Open new terminal:
+cd frontend
+cp .env.example .env  # if exists; otherwise create VITE_API_BASE=http://localhost:4000
+npm install
+npm run dev
+# Frontend runs at http://localhost:5173 (check terminal output)
+
+6) Accounts (after seed)
+------------------------
+- Admin: admin@example.com / adminpass
+- User : test@example.com  / password
+
+7) Optional: Enable local AI (Ollama)
+-------------------------------------
+Install Ollama (macOS):
+  brew install ollama
+Start service:
+  ollama serve
+Pull model (recommended):
+  ollama pull llama3.2
+Then backend AI endpoints will work:
+  GET  /ai/health
+  POST /ai/generate-slides
+
+8) Useful scripts
+-----------------
+- backend: npm run dev          # start API
+- backend: npm run seed         # seed DB
+- backend: npm run prisma:migrate
+- frontend: npm run dev         # start Vite
+
+9) Common issues
+----------------
+- Cannot connect to DB: check DATABASE_URL and MySQL running.
+- Migration errors: ensure DB user has privileges; rerun prisma migrate.
+- 401 errors in frontend: login again to refresh JWT.
+- AI model not found: pull model via `ollama pull llama3.2`.
+
+10) Production notes (summary)
+------------------------------
+- Set strong JWT_SECRET.
+- Use a production MySQL instance.
+- Run `npm ci` instead of `npm install` for deterministic installs.
+- Serve frontend via `npm run build` and a static host (e.g., nginx).
+- Run backend with a process manager (pm2/systemd) behind reverse proxy.
+
+Enjoy! 🎉
