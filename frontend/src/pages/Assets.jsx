@@ -4,6 +4,7 @@ import Layout from '../components/Layout'
 import FilterPanel from '../components/FilterPanel'
 import AssetCard from '../components/AssetCard'
 import client from '../services/api'
+import { useToast } from '../components/Toast'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000'
 
@@ -11,6 +12,7 @@ export default function Assets(){
   const [assets, setAssets] = useState([])
   const [loading, setLoading] = useState(false)
   const fileRef = useRef()
+  const { showToast } = useToast()
 
   const [tempCategory, setTempCategory] = useState('All')
   const [tempStyle, setTempStyle] = useState('All')
@@ -114,7 +116,7 @@ export default function Assets(){
         setAssets(prev => prev.filter(a => a.id !== asset.id))
       }catch(err){
         console.error(err)
-        alert('Could not delete asset')
+        showToast('アセットの削除に失敗しました。', 'error')
       }
     })
     setConfirmOpen(true)
@@ -146,11 +148,11 @@ export default function Assets(){
             </div>
           </div>
           {loading ? (
-            <div>Loading...</div>
+            <div>読み込み中...</div>
           ) : (
             <div className="grid grid-cols-3 gap-4">
               {filtered.length === 0 ? (
-                <div className="text-gray-500">No assets</div>
+                <div className="text-gray-500">アセットがありません</div>
               ) : (
                 filtered.map(asset => (
                   <AssetCard key={asset.id} asset={asset} onDelete={onDelete} onDownload={onDownload} />

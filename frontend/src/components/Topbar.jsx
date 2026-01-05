@@ -14,7 +14,7 @@ export default function Topbar(){
   return (
     <header className="w-full h-16 bg-white flex items-center px-6 border-b shadow-sm">
       <div className="flex-1 flex items-center gap-4">
-        <div className="text-lg font-semibold text-gray-800">Dashboard</div>
+        <div className="text-lg font-semibold text-gray-800">ダッシュボード</div>
       </div>
       <div className="flex items-center gap-3">
         <Link to="/ai" className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:shadow-md transition-shadow">

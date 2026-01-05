@@ -62,7 +62,7 @@ export default function Templates(){
       <div className="bg-white p-4 rounded shadow">
         {loading ? (
           <div className="text-center py-12">
-            <div className="text-gray-500">Loading templates...</div>
+            <div className="text-gray-500">テンプレートを読み込み中...</div>
           </div>
         ) : (
           <div className="flex gap-4">
@@ -83,7 +83,7 @@ export default function Templates(){
             {/* Grid */}
             <div className="flex-1">
               {filtered.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">No templates found</div>
+                <div className="text-center py-12 text-gray-500">テンプレートが見つかりません</div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filtered.map(t => (

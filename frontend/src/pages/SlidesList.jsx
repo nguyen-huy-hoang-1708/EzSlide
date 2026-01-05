@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import Layout from '../components/Layout'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { useToast } from '../components/Toast'
 
 export default function SlidesList(){
   const [templates, setTemplates] = useState([])
@@ -9,6 +10,7 @@ export default function SlidesList(){
   const [filter, setFilter] = useState('All')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const { showToast } = useToast()
 
   useEffect(()=>{
     async function load(){
@@ -39,7 +41,7 @@ export default function SlidesList(){
       }
     } catch (error) {
       console.error('Failed to use template:', error)
-      alert('Failed to create presentation from template')
+      showToast('テンプレートからプレゼンテーションの作成に失敗しました。', 'error')
     } finally {
       setLoading(false)
     }

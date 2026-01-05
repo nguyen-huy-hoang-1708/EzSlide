@@ -2,11 +2,13 @@ import React, { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import PresentationMode from '../components/PresentationMode'
+import { useToast } from '../components/Toast'
 
 export default function Editor(){
   const { id } = useParams() // This is slideId
   const navigate = useNavigate()
   const canvasRef = useRef(null)
+  const { showToast } = useToast()
   
   // Presentation & Slides
   const [presentation, setPresentation] = useState(null)
@@ -62,7 +64,7 @@ export default function Editor(){
           
           // Check file size (limit to 10MB)
           if (blob.size > 10 * 1024 * 1024) {
-            alert('⚠️ Ảnh quá lớn! Vui lòng chọn ảnh nhỏ hơn 10MB')
+            showToast('画像が大きすぎます。10MB以下の画像を選択してください。', 'warning')
             return
           }
           
@@ -76,7 +78,7 @@ export default function Editor(){
             console.log(`Pasted image size: ${(base64Size / 1024 / 1024).toFixed(2)}MB`)
             
             if (base64Size > 5 * 1024 * 1024) {
-              alert('⚠️ Ảnh sau khi encode quá lớn! Hãy thử ảnh nhỏ hơn hoặc nén ảnh trước.')
+              showToast('エンコード後の画像が大きすぎます。より小さい画像を試すか、圧縮してください。', 'warning')
               return
             }
             
@@ -104,7 +106,7 @@ export default function Editor(){
           
           reader.onerror = (error) => {
             console.error('Error reading image:', error)
-            alert('❌ Lỗi khi đọc ảnh!')
+            showToast('画像の読み込みエラーが発生しました。', 'error')
           }
           
           reader.readAsDataURL(blob)
@@ -163,9 +165,9 @@ export default function Editor(){
         // Check if this is a template sample - warn user
         if (presRes.data.title?.includes('Sample')) {
           const shouldCopy = window.confirm(
-            '⚠️ You are editing a template sample!\n\n' +
-            'Changes will affect the template for all users.\n\n' +
-            'Click OK to create your own copy, or Cancel to edit the template directly.'
+            '⚠️ テンプレートサンプルを編集しています！\n\n' +
+            '変更はすべてのユーザーのテンプレートに影響します。\n\n' +
+            'OKをクリックして自分のコピーを作成するか、キャンセルして直接テンプレートを編集します。'
           )
           
           if (shouldCopy) {
@@ -254,7 +256,7 @@ export default function Editor(){
           console.log(`Element ${elem.id || 'new'} image size: ${(base64Size / 1024 / 1024).toFixed(2)}MB`)
           
           if (base64Size > 5 * 1024 * 1024) {
-            alert(`⚠️ Ảnh quá lớn! Element có ảnh ${(base64Size / 1024 / 1024).toFixed(2)}MB.\nVui lòng xóa ảnh này và dùng ảnh nhỏ hơn.`)
+            showToast(`画像が大きすぎます。要素の画像サイズ: ${(base64Size / 1024 / 1024).toFixed(2)}MB。この画像を削除して、より小さい画像を使用してください。`, 'warning')
             setSaving(false)
             return
           }
@@ -278,7 +280,7 @@ export default function Editor(){
             await api.put(`/slides/${slide.id}/elements/${elem.id}`, updatePayload)
           } catch (err) {
             console.error('Failed to update element:', err)
-            alert(`❌ Lỗi khi cập nhật element: ${err.response?.data?.message || err.message}`)
+            showToast(`要素の更新に失敗しました: ${err.response?.data?.message || err.message}`, 'error')
             setSaving(false)
             return
           }
@@ -302,7 +304,7 @@ export default function Editor(){
             console.log('Created with ID:', elem.id)
           } catch (err) {
             console.error('Failed to create element:', err)
-            alert(`❌ Lỗi khi tạo element: ${err.response?.data?.message || err.message}`)
+            showToast(`要素の作成に失敗しました: ${err.response?.data?.message || err.message}`, 'error')
             setSaving(false)
             return
           }
@@ -330,10 +332,10 @@ export default function Editor(){
         setAllSlides(updatedSlides)
       }
       
-      alert('✅ Slide saved successfully!')
+      showToast('スライドを保存しました！', 'success')
     } catch (err) {
       console.error('Save failed:', err)
-      alert('❌ Failed to save slide: ' + (err.response?.data?.message || err.message))
+      showToast('スライドの保存に失敗しました: ' + (err.response?.data?.message || err.message), 'error')
     }
     setSaving(false)
   }
@@ -341,7 +343,7 @@ export default function Editor(){
   // Export presentation as JSON
   function exportPresentation() {
     if (!presentation || !allSlides.length) {
-      alert('No presentation to export')
+      showToast('エクスポートするプレゼンテーションがありません。', 'warning')
       return
     }
 
@@ -379,7 +381,7 @@ export default function Editor(){
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
     
-    alert('✅ Presentation exported successfully!')
+    showToast('プレゼンテーションをエクスポートしました！', 'success')
   }
 
   function addTextElement() {
@@ -606,10 +608,10 @@ export default function Editor(){
         ))
         setSelectedElement({ ...selectedElement, id: res.data.id })
       }
-      alert('Element saved successfully!')
+      showToast('要素を保存しました！', 'success')
     } catch (err) {
       console.error('Failed to save element:', err)
-      alert('Failed to save element')
+      showToast('要素の保存に失敗しました。', 'error')
     }
     setSaving(false)
   }
@@ -666,11 +668,11 @@ export default function Editor(){
   // Delete current slide
   async function deleteCurrentSlide() {
     if (!slide || allSlides.length <= 1) {
-      alert('Cannot delete the last slide')
+      showToast('最後のスライドを削除することはできません。', 'warning')
       return
     }
     
-    if (!confirm(`Delete slide "${slide.title}"?`)) return
+    if (!confirm(`スライド「${slide.title}」を削除しますか？`)) return
     
     try {
       await api.delete(`/slides/${slide.id}`)
@@ -683,7 +685,7 @@ export default function Editor(){
       }
     } catch (err) {
       console.error('Failed to delete slide:', err)
-      alert('Failed to delete slide')
+      showToast('スライドの削除に失敗しました。', 'error')
     }
   }
 
@@ -717,7 +719,7 @@ export default function Editor(){
       navigate(`/editor/${res.data.id}`)
     } catch (err) {
       console.error('Failed to duplicate slide:', err)
-      alert('Failed to duplicate slide')
+      showToast('スライドの複製に失敗しました。', 'error')
     }
   }
 
@@ -727,7 +729,7 @@ export default function Editor(){
     
     try {
       const res = await api.post('/slides', {
-        title: 'New Slide',
+        title: '新しいスライド',
         content: JSON.stringify({ background: '#ffffff' }),
         presentationId: presentation.id,
         orderIndex: allSlides.length
@@ -735,7 +737,7 @@ export default function Editor(){
       navigate(`/editor/${res.data.id}`)
     } catch (err) {
       console.error('Failed to add slide:', err)
-      alert('Failed to add slide')
+      showToast('スライドの追加に失敗しました。', 'error')
     }
   }
 
@@ -757,7 +759,7 @@ export default function Editor(){
       loadSlide()
     } catch (err) {
       console.error('Failed to move slide:', err)
-      alert('Failed to move slide')
+      showToast('スライドの移動に失敗しました。', 'error')
     }
   }
 
@@ -767,7 +769,7 @@ export default function Editor(){
       <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate('/dashboard')} className="text-gray-600 hover:text-gray-900">
-            ← Back
+            ← 戻る
           </button>
           <input 
             type="text" 
@@ -782,13 +784,13 @@ export default function Editor(){
             disabled={saving}
             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? '保存中...' : '保存'}
           </button>
           <button 
             onClick={exportPresentation}
             className="px-4 py-2 border rounded hover:bg-gray-50"
           >
-            Export
+            エクスポート
           </button>
           <button 
             onClick={() => setIsPresentationMode(true)}
@@ -799,7 +801,7 @@ export default function Editor(){
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Trình chiếu
+            プレゼンテーション
           </button>
         </div>
       </div>
@@ -807,32 +809,32 @@ export default function Editor(){
       {/* Main Toolbar */}
       <div className="bg-white border-b px-4 py-3 flex items-center gap-2 overflow-x-auto">
         <div className="flex items-center gap-1 border-r pr-2">
-          <button onClick={addTextElement} className="p-2 hover:bg-gray-100 rounded" title="Add Text">
+          <button onClick={addTextElement} className="p-2 hover:bg-gray-100 rounded" title="テキストを追加">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </button>
-          <button onClick={addImageElement} className="p-2 hover:bg-gray-100 rounded" title="Add Image">
+          <button onClick={addImageElement} className="p-2 hover:bg-gray-100 rounded" title="画像を追加">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </button>
-          <button onClick={addIconElement} className="p-2 hover:bg-gray-100 rounded" title="Add Icon/Emoji">
+          <button onClick={addIconElement} className="p-2 hover:bg-gray-100 rounded" title="アイコン/絵文字を追加">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
           <div className="relative group">
-            <button className="p-2 hover:bg-gray-100 rounded" title="Add Shape">
+            <button className="p-2 hover:bg-gray-100 rounded" title="図形を追加">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
               </svg>
             </button>
             <div className="absolute top-full left-0 mt-1 bg-white border rounded shadow-lg p-2 hidden group-hover:block z-10">
-              <button onClick={() => addShapeElement('rectangle')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">Rectangle</button>
-              <button onClick={() => addShapeElement('circle')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">Circle</button>
-              <button onClick={() => addShapeElement('triangle')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">Triangle</button>
-              <button onClick={() => addShapeElement('star')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">Star</button>
+              <button onClick={() => addShapeElement('rectangle')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">長方形</button>
+              <button onClick={() => addShapeElement('circle')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">円</button>
+              <button onClick={() => addShapeElement('triangle')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">三角形</button>
+              <button onClick={() => addShapeElement('star')} className="block px-3 py-2 hover:bg-gray-100 w-full text-left">星</button>
             </div>
           </div>
         </div>
@@ -889,7 +891,7 @@ export default function Editor(){
             <button 
               onClick={() => updateSelectedElementData({ textAlign: 'left' })}
               className={`p-1 border rounded ${selectedElement.data.textAlign === 'left' ? 'bg-indigo-100 border-indigo-500' : ''}`}
-              title="Align Left"
+              title="左揃え"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h16" />
@@ -899,7 +901,7 @@ export default function Editor(){
             <button 
               onClick={() => updateSelectedElementData({ textAlign: 'center' })}
               className={`p-1 border rounded ${selectedElement.data.textAlign === 'center' ? 'bg-indigo-100 border-indigo-500' : ''}`}
-              title="Align Center"
+              title="中央揃え"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M7 12h10M4 18h16" />
@@ -909,7 +911,7 @@ export default function Editor(){
             <button 
               onClick={() => updateSelectedElementData({ textAlign: 'right' })}
               className={`p-1 border rounded ${selectedElement.data.textAlign === 'right' ? 'bg-indigo-100 border-indigo-500' : ''}`}
-              title="Align Right"
+              title="右揃え"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M14 12h6M4 18h16" />
@@ -919,7 +921,7 @@ export default function Editor(){
             <button 
               onClick={() => updateSelectedElementData({ textAlign: 'justify' })}
               className={`p-1 border rounded ${selectedElement.data.textAlign === 'justify' ? 'bg-indigo-100 border-indigo-500' : ''}`}
-              title="Justify"
+              title="両端揃え"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -933,14 +935,14 @@ export default function Editor(){
               value={selectedElement.data.color || '#000000'}
               onChange={(e) => updateSelectedElementData({ color: e.target.value })}
               className="w-8 h-8 border rounded cursor-pointer"
-              title="Text Color"
+              title="テキストの色"
             />
           </div>
         )}
 
         {selectedElement && (
           <div className="flex items-center gap-2 border-r pr-2">
-            <label className="text-sm">Rotate:</label>
+            <label className="text-sm">回転:</label>
             <input 
               type="number" 
               value={selectedElement.rotation || 0}
@@ -950,13 +952,13 @@ export default function Editor(){
               max="360"
             />
             <button onClick={deleteSelectedElement} className="px-2 py-1 border rounded text-red-500 hover:bg-red-50">
-              Delete
+              削除
             </button>
           </div>
         )}
 
         <div className="flex items-center gap-2">
-          <label className="text-sm">Background:</label>
+          <label className="text-sm">背景:</label>
           <input 
             type="color" 
             value={background}
@@ -965,7 +967,7 @@ export default function Editor(){
           />
           <input 
             type="text"
-            placeholder="Background Image URL"
+            placeholder="背景画像URL"
             value={backgroundImage}
             onChange={(e) => setBackgroundImage(e.target.value)}
             className="border rounded px-2 py-1 text-sm w-48"
@@ -981,12 +983,12 @@ export default function Editor(){
             <div className="p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-semibold text-gray-500 uppercase">
-                  Slides ({allSlides.length})
+                  スライド ({allSlides.length})
                 </div>
                 <button
                   onClick={addNewSlide}
                   className="p-1 hover:bg-gray-200 rounded"
-                  title="Add New Slide"
+                  title="新しいスライドを追加"
                 >
                   <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1013,10 +1015,10 @@ export default function Editor(){
                         {idx + 1}. {s.title}
                       </div>
                       <div 
-                        className="w-full h-20 bg-gray-100 rounded border border-gray-200 overflow-hidden"
+                        className="w-full h-20 bg-gray-100 rounded border border-gray-200 overflow-hidden relative"
                         style={(() => {
                           try {
-                            const content = JSON.parse(s.content || '{}')
+                            const content = typeof s.content === 'string' ? JSON.parse(s.content) : s.content
                             if (content.backgroundImage) {
                               return {
                                 backgroundImage: `url(${content.backgroundImage})`,
@@ -1025,11 +1027,152 @@ export default function Editor(){
                               }
                             }
                             return { backgroundColor: content.background || '#ffffff' }
-                          } catch {
+                          } catch (e) {
                             return { backgroundColor: '#ffffff' }
                           }
                         })()}
-                      />
+                      >
+                        {/* Mini preview of elements */}
+                        {s.elements && Array.isArray(s.elements) && s.elements.map((elem, elemIdx) => {
+                          if (!elem) return null
+                          
+                          // Scale factor to fit 960x540 canvas into 160x80 thumbnail
+                          const scale = 80 / 540 // height-based scaling
+                          
+                          try {
+                            // Parse data if it's a string
+                            let data = elem.data
+                            if (typeof data === 'string') {
+                              try {
+                                data = JSON.parse(data)
+                              } catch (parseErr) {
+                                console.warn('Failed to parse element data:', parseErr)
+                                return null
+                              }
+                            }
+                            
+                            if (!data) return null
+                            
+                            // Render text elements
+                            if (elem.type === 'text' && data.text) {
+                              return (
+                                <div
+                                  key={`text-${elem.id || elemIdx}`}
+                                  className="absolute pointer-events-none"
+                                  style={{
+                                    left: `${(elem.x || 0) * scale}px`,
+                                    top: `${(elem.y || 0) * scale}px`,
+                                    width: `${(elem.width || 100) * scale}px`,
+                                    height: `${(elem.height || 50) * scale}px`,
+                                    fontSize: `${Math.max(4, (data.fontSize || 16) * scale)}px`,
+                                    color: data.color || '#000000',
+                                    fontWeight: data.bold ? 'bold' : 'normal',
+                                    fontStyle: data.italic ? 'italic' : 'normal',
+                                    textDecoration: data.underline ? 'underline' : 'none',
+                                    textAlign: data.textAlign || 'left',
+                                    fontFamily: data.fontFamily || 'Arial',
+                                    overflow: 'hidden',
+                                    lineHeight: '1.2',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word'
+                                  }}
+                                >
+                                  {data.text}
+                                </div>
+                              )
+                            }
+                            
+                            // Render image elements
+                            if (elem.type === 'image' && data.imageUrl) {
+                              return (
+                                <img
+                                  key={`img-${elem.id || elemIdx}`}
+                                  src={data.imageUrl}
+                                  alt=""
+                                  className="absolute object-cover pointer-events-none"
+                                  style={{
+                                    left: `${(elem.x || 0) * scale}px`,
+                                    top: `${(elem.y || 0) * scale}px`,
+                                    width: `${(elem.width || 100) * scale}px`,
+                                    height: `${(elem.height || 100) * scale}px`,
+                                  }}
+                                  onError={(e) => {
+                                    e.target.style.display = 'none'
+                                  }}
+                                />
+                              )
+                            }
+                            
+                            // Render shape elements
+                            if (elem.type === 'shape') {
+                              const shapeStyle = {
+                                left: `${(elem.x || 0) * scale}px`,
+                                top: `${(elem.y || 0) * scale}px`,
+                                width: `${(elem.width || 100) * scale}px`,
+                                height: `${(elem.height || 100) * scale}px`,
+                                backgroundColor: data.fill || '#cccccc',
+                                pointerEvents: 'none'
+                              }
+                              
+                              // Add border if specified
+                              if (data.stroke) {
+                                shapeStyle.border = `${Math.max(1, (data.strokeWidth || 2) * scale)}px solid ${data.stroke}`
+                              }
+                              
+                              // Circle shape
+                              if (data.shape === 'circle') {
+                                shapeStyle.borderRadius = '50%'
+                              }
+                              // Triangle shape - use CSS triangle trick
+                              else if (data.shape === 'triangle') {
+                                shapeStyle.width = '0'
+                                shapeStyle.height = '0'
+                                shapeStyle.backgroundColor = 'transparent'
+                                shapeStyle.borderLeft = `${(elem.width || 100) * scale / 2}px solid transparent`
+                                shapeStyle.borderRight = `${(elem.width || 100) * scale / 2}px solid transparent`
+                                shapeStyle.borderBottom = `${(elem.height || 100) * scale}px solid ${data.fill || '#cccccc'}`
+                              }
+                              // Star shape - simplified as polygon
+                              else if (data.shape === 'star') {
+                                // For thumbnail, just show as circle with hint
+                                shapeStyle.borderRadius = '30%'
+                              }
+                              
+                              return (
+                                <div
+                                  key={`shape-${elem.id || elemIdx}`}
+                                  className="absolute"
+                                  style={shapeStyle}
+                                />
+                              )
+                            }
+                            
+                            // Icon/emoji elements
+                            if (elem.type === 'icon' && data.icon) {
+                              return (
+                                <div
+                                  key={`icon-${elem.id || elemIdx}`}
+                                  className="absolute pointer-events-none flex items-center justify-center"
+                                  style={{
+                                    left: `${(elem.x || 0) * scale}px`,
+                                    top: `${(elem.y || 0) * scale}px`,
+                                    width: `${(elem.width || 50) * scale}px`,
+                                    height: `${(elem.height || 50) * scale}px`,
+                                    fontSize: `${Math.max(6, (elem.height || 50) * scale * 0.8)}px`,
+                                  }}
+                                >
+                                  {data.icon}
+                                </div>
+                              )
+                            }
+                            
+                          } catch (err) {
+                            console.error('Error rendering thumbnail element:', err, elem)
+                          }
+                          
+                          return null
+                        })}
+                      </div>
                     </div>
                     
                     {/* Slide Actions */}
@@ -1042,7 +1185,7 @@ export default function Editor(){
                           }}
                           disabled={idx === 0}
                           className="p-1 bg-white border rounded hover:bg-gray-100 disabled:opacity-30"
-                          title="Move Up"
+                          title="上に移動"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -1055,7 +1198,7 @@ export default function Editor(){
                           }}
                           disabled={idx === allSlides.length - 1}
                           className="p-1 bg-white border rounded hover:bg-gray-100 disabled:opacity-30"
-                          title="Move Down"
+                          title="下に移動"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1067,7 +1210,7 @@ export default function Editor(){
                             duplicateSlide()
                           }}
                           className="p-1 bg-white border rounded hover:bg-gray-100"
-                          title="Duplicate"
+                          title="複製"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -1079,7 +1222,7 @@ export default function Editor(){
                             deleteCurrentSlide()
                           }}
                           className="p-1 bg-white border rounded hover:bg-red-100 text-red-600"
-                          title="Delete"
+                          title="削除"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

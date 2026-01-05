@@ -1,10 +1,12 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { useToast } from './Toast'
 
 export default function TemplateCard({ template }){
   const navigate = useNavigate()
   const [loading, setLoading] = React.useState(false)
+  const { showToast } = useToast()
 
   async function handleUseTemplate(e) {
     e.stopPropagation()
@@ -22,7 +24,7 @@ export default function TemplateCard({ template }){
       }
     } catch (error) {
       console.error('Failed to use template:', error)
-      alert('Failed to create presentation from template')
+      showToast('テンプレートからプレゼンテーションの作成に失敗しました。', 'error')
     } finally {
       setLoading(false)
     }

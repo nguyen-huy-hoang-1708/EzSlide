@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import Layout from '../components/Layout'
 import { logout } from '../services/auth'
 import api from '../services/api'
+import { useToast } from '../components/Toast'
 
 export default function Settings(){
   const [tab, setTab] = useState('info')
@@ -11,7 +12,7 @@ export default function Settings(){
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [message, setMessage] = useState('')
+  const { showToast } = useToast()
 
   useEffect(()=>{
     async function load(){
@@ -29,20 +30,26 @@ export default function Settings(){
     try{
       const res = await api.put('/auth/me', { name, email })
       setUser(res.data.user)
-      setMessage('アカウント情報を更新しました')
-    }catch(err){ setMessage(err?.response?.data?.message || 'Error') }
+      showToast('アカウント情報を更新しました', 'success')
+    }catch(err){ 
+      showToast(err?.response?.data?.message || 'エラーが発生しました', 'error') 
+    }
   }
 
   async function changePassword(){
-    setMessage('')
-    if (newPassword !== confirmPassword) return setMessage('Passwords do not match')
+    if (newPassword !== confirmPassword) {
+      showToast('パスワードが一致しません', 'error')
+      return
+    }
     try{
       await api.put('/auth/me', { currentPassword, password: newPassword })
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      setMessage('パスワードを更新しました')
-    }catch(err){ setMessage(err?.response?.data?.message || 'Error') }
+      showToast('パスワードを更新しました', 'success')
+    }catch(err){ 
+      showToast(err?.response?.data?.message || 'エラーが発生しました', 'error') 
+    }
   }
 
   return (
@@ -62,8 +69,6 @@ export default function Settings(){
             </nav>
           </aside>
           <main className="flex-1 bg-white p-6 rounded shadow">
-            {message && <div className="mb-3 text-sm text-green-600">{message}</div>}
-
             {tab === 'info' && (
               <div>
                 <div className="mb-3">

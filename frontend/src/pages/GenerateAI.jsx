@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Layout from '../components/Layout'
 import api from '../services/api'
-import Alert from '../components/Alert'
+import { useToast } from '../components/Toast'
 
 export default function GenerateAI(){
   const [topic, setTopic] = useState('')
@@ -12,10 +12,9 @@ export default function GenerateAI(){
   const [themeName, setThemeName] = useState('professional')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [aiAvailable, setAiAvailable] = useState(true)
   const [ollamaStatus, setOllamaStatus] = useState(null)
+  const { showToast } = useToast()
 
   // Check Ollama health on mount
   useEffect(() => {
@@ -36,13 +35,11 @@ export default function GenerateAI(){
 
   async function run(){
     if (!topic.trim()) {
-      setError('Vui lòng nhập chủ đề!')
+      showToast('トピックを入力してください', 'error')
       return
     }
 
     setLoading(true)
-    setError('')
-    setSuccess('')
     setResult(null)
     
     try{
@@ -62,7 +59,7 @@ export default function GenerateAI(){
         
         // Auto download if PPTX
         if (exportFormat === 'pptx' && res.data.file) {
-          setSuccess(`✅ Slides đã được tạo thành công! File: ${res.data.file.filename}`)
+          showToast('スライドが正常に作成されました！', 'success')
           // Auto download
           const downloadUrl = `${api.defaults.baseURL}${res.data.file.downloadUrl}`
           const link = document.createElement('a')
@@ -70,7 +67,7 @@ export default function GenerateAI(){
           link.download = res.data.file.filename
           link.click()
         } else {
-          setSuccess('✅ Slide plans đã được tạo thành công!')
+          showToast('スライドプランが正常に作成されました', 'success')
         }
       }
     }catch(err){
@@ -80,14 +77,14 @@ export default function GenerateAI(){
       
       // Handle 401 Unauthorized - JWT expired or invalid
       if (statusCode === 401 || errorMsg.includes('token') || errorMsg.includes('Unauthorized')) {
-        setError(`❌ Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.`)
+        showToast('セッションが期限切れです。再度ログインしてください', 'error')
         // Redirect to login after 2 seconds
         setTimeout(() => {
           localStorage.removeItem('token')
           window.location.href = '/login'
         }, 2000)
       } else {
-        setError(`❌ Lỗi: ${errorMsg}`)
+        showToast(`エラー: ${errorMsg}`, 'error')
         
         if (errorMsg.includes('Ollama') || errorMsg.includes('model')) {
           setAiAvailable(false)
@@ -122,7 +119,7 @@ export default function GenerateAI(){
                 ollamaStatus.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'
               }`}></span>
               <span className="font-semibold">
-                {ollamaStatus.status === 'healthy' ? '✅ Ollama is running' : '❌ Ollama is not available'}
+                {ollamaStatus.status === 'healthy' ? '✅ Ollamaは実行中です' : '❌ Ollamaが利用できません'}
               </span>
               {ollamaStatus.models && ollamaStatus.models.length > 0 && (
                 <span className="text-xs ml-auto">Model: {ollamaStatus.models[0]}</span>
@@ -130,7 +127,7 @@ export default function GenerateAI(){
             </div>
             {ollamaStatus.status !== 'healthy' && (
               <div className="mt-2 text-xs">
-                <p>💡 Make sure Ollama is running:</p>
+                <p>💡 Ollamaが実行されていることを確認してください:</p>
                 <code className="bg-white px-2 py-1 rounded">ollama serve</code>
               </div>
             )}
@@ -139,11 +136,11 @@ export default function GenerateAI(){
 
         {/* Main Input */}
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-2">📝 Chủ đề Presentation *</label>
+          <label className="block text-sm font-medium mb-2">📝 プレゼンテーションのトピック *</label>
           <textarea 
             value={topic} 
             onChange={(e)=>setTopic(e.target.value)} 
-            placeholder="Ví dụ: Trí tuệ nhân tạo trong giáo dục, Machine Learning cơ bản, Blockchain và ứng dụng..." 
+            placeholder="例: 教育におけるAI、機械学習の基礎、ブロックチェーンとその応用..." 
             className="w-full border p-3 rounded-lg resize-none"
             rows={3}
             disabled={loading || !aiAvailable}
@@ -154,7 +151,7 @@ export default function GenerateAI(){
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           {/* Slide Count */}
           <div>
-            <label className="block text-sm font-medium mb-2">📊 Số lượng slide (2-20)</label>
+            <label className="block text-sm font-medium mb-2">📊 スライド数 (2-20)</label>
             <div className="flex items-center gap-2">
               <button 
                 className="px-3 py-2 border rounded hover:bg-gray-100"
@@ -196,21 +193,21 @@ export default function GenerateAI(){
 
           {/* Language */}
           <div>
-            <label className="block text-sm font-medium mb-2">🌍 Ngôn ngữ</label>
+            <label className="block text-sm font-medium mb-2">🌍 言語</label>
             <select 
               value={language} 
               onChange={(e)=>setLanguage(e.target.value)} 
               className="w-full border p-2 rounded"
               disabled={loading}
             >
-              <option value="vi">Tiếng Việt</option>
-              <option value="en">English</option>
+              <option value="vi">ベトナム語</option>
+              <option value="en">英語</option>
             </select>
           </div>
 
           {/* Export Format */}
           <div>
-            <label className="block text-sm font-medium mb-2">💾 Định dạng xuất</label>
+            <label className="block text-sm font-medium mb-2">💾 出力形式</label>
             <select 
               value={exportFormat} 
               onChange={(e)=>setExportFormat(e.target.value)} 
@@ -218,14 +215,14 @@ export default function GenerateAI(){
               disabled={loading}
             >
               <option value="pptx">📄 PowerPoint (.pptx)</option>
-              <option value="json">📋 JSON Only</option>
+              <option value="json">📋 JSONのみ</option>
             </select>
           </div>
         </div>
 
         {/* Theme Selection */}
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-3">🎨 Chọn Theme (Mẫu màu sắc)</label>
+          <label className="block text-sm font-medium mb-3">🎨 テーマを選択 (カラースキーム)</label>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {/* Professional Theme */}
             <button
@@ -242,7 +239,7 @@ export default function GenerateAI(){
                 <div className="w-4 h-4 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600"></div>
                 <span className="text-xs font-semibold">Professional</span>
               </div>
-              <div className="text-xs text-gray-500">Màu xanh tím chuyên nghiệp</div>
+              <div className="text-xs text-gray-500">青紫系プロフェッショナル</div>
             </button>
 
             {/* Modern Theme */}
@@ -260,7 +257,7 @@ export default function GenerateAI(){
                 <div className="w-4 h-4 rounded-full bg-gradient-to-br from-gray-700 to-gray-900"></div>
                 <span className="text-xs font-semibold">Modern Dark</span>
               </div>
-              <div className="text-xs text-gray-500">Tone tối hiện đại</div>
+              <div className="text-xs text-gray-500">ダークモダントーン</div>
             </button>
 
             {/* Elegant Theme */}
@@ -278,7 +275,7 @@ export default function GenerateAI(){
                 <div className="w-4 h-4 rounded-full bg-gradient-to-br from-yellow-600 to-yellow-800"></div>
                 <span className="text-xs font-semibold">Elegant Gold</span>
               </div>
-              <div className="text-xs text-gray-500">Vàng sang trọng</div>
+              <div className="text-xs text-gray-500">エレガントゴールド</div>
             </button>
 
             {/* Vibrant Theme */}
@@ -296,7 +293,7 @@ export default function GenerateAI(){
                 <div className="w-4 h-4 rounded-full bg-gradient-to-br from-pink-500 to-red-500"></div>
                 <span className="text-xs font-semibold">Vibrant</span>
               </div>
-              <div className="text-xs text-gray-500">Màu sắc sống động</div>
+              <div className="text-xs text-gray-500">鮮やかな色</div>
             </button>
           </div>
         </div>
@@ -317,39 +314,25 @@ export default function GenerateAI(){
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Đang tạo slides... (có thể mất 10-30s)
+              スライドを作成中... (10-30秒かかる場合があります)
             </span>
           ) : (
-            '🚀 Tạo Slides với AI'
+            '🚀 AIでスライドを作成'
           )}
         </button>
-
-        {/* Success Message */}
-        {success && (
-          <div className="mt-4">
-            <Alert type="success">{success}</Alert>
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="mt-4">
-            <Alert type="error">{error}</Alert>
-          </div>
-        )}
 
         {/* Results */}
         {result && (
           <div className="mt-6 border-t pt-6">
-            <h3 className="text-xl font-bold mb-4">📊 Kết quả</h3>
+            <h3 className="text-xl font-bold mb-4">📊 結果</h3>
             
             {/* Metadata */}
             <div className="bg-gray-50 p-4 rounded mb-4">
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div><span className="font-semibold">Chủ đề:</span> {result.metadata.topic}</div>
-                <div><span className="font-semibold">Số slide:</span> {result.metadata.slideCount}</div>
-                <div><span className="font-semibold">Tone:</span> {result.metadata.tone}</div>
-                <div><span className="font-semibold">Ngôn ngữ:</span> {result.metadata.language}</div>
+                <div><span className="font-semibold">トピック:</span> {result.metadata.topic}</div>
+                <div><span className="font-semibold">スライド数:</span> {result.metadata.slideCount}</div>
+                <div><span className="font-semibold">トーン:</span> {result.metadata.tone}</div>
+                <div><span className="font-semibold">言語:</span> {result.metadata.language}</div>
               </div>
             </div>
 
@@ -360,7 +343,7 @@ export default function GenerateAI(){
                   onClick={downloadPptx}
                   className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-semibold transition"
                 >
-                  ⬇️ Tải lại file PowerPoint
+                  ⬇️ PowerPointファイルを再ダウンロード
                 </button>
               </div>
             )}
@@ -384,7 +367,7 @@ export default function GenerateAI(){
                       )}
                       {slide.notes && (
                         <div className="mt-2 text-xs text-gray-500 italic">
-                          <span className="font-semibold">Notes:</span> {slide.notes}
+                          <span className="font-semibold">ノート:</span> {slide.notes}
                         </div>
                       )}
                       {slide.imageHint && (
@@ -412,7 +395,7 @@ export default function GenerateAI(){
                   }}
                   className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-semibold"
                 >
-                  💾 Tải JSON
+                  💾 JSONをダウンロード
                 </button>
               </div>
             )}
@@ -422,13 +405,13 @@ export default function GenerateAI(){
         {/* Help Text */}
         {!aiAvailable && (
           <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded text-sm">
-            <p className="font-semibold mb-2">⚠️ Ollama chưa sẵn sàng</p>
-            <p className="mb-2">Để sử dụng tính năng này, bạn cần:</p>
+            <p className="font-semibold mb-2">⚠️ Ollamaの準備ができていません</p>
+            <p className="mb-2">この機能を使用するには:</p>
             <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>Cài đặt Ollama: <code className="bg-white px-1 py-0.5 rounded">brew install ollama</code></li>
-              <li>Khởi động service: <code className="bg-white px-1 py-0.5 rounded">ollama serve</code></li>
-              <li>Pull model: <code className="bg-white px-1 py-0.5 rounded">ollama pull llama3.2</code></li>
-              <li>Reload trang này</li>
+              <li>Ollamaをインストール: <code className="bg-white px-1 py-0.5 rounded">brew install ollama</code></li>
+              <li>サービスを起動: <code className="bg-white px-1 py-0.5 rounded">ollama serve</code></li>
+              <li>モデルをプル: <code className="bg-white px-1 py-0.5 rounded">ollama pull llama3.2</code></li>
+              <li>このページをリロード</li>
             </ol>
           </div>
         )}

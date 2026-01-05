@@ -58,7 +58,19 @@ router.post('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id)
-  const p = await prisma.presentation.findUnique({ where: { id }, include: { slides: true } })
+  const p = await prisma.presentation.findUnique({ 
+    where: { id }, 
+    include: { 
+      slides: {
+        include: {
+          elements: true
+        },
+        orderBy: {
+          orderIndex: 'asc'
+        }
+      }
+    }
+  })
   if (!p || p.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
   res.json(p)
 })

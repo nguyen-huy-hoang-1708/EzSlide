@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import Layout from '../components/Layout'
 import api from '../services/api'
 import { Link, useNavigate } from 'react-router-dom'
+import { useToast } from '../components/Toast'
 
 export default function Presentations(){
   const [presentations, setPresentations] = useState([])
@@ -9,6 +10,7 @@ export default function Presentations(){
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
   const nav = useNavigate()
+  const { showToast } = useToast()
 
   useEffect(() => { 
     loadPresentations()
@@ -29,7 +31,7 @@ export default function Presentations(){
 
   async function create(){
     if(!title.trim()) {
-      alert('Please enter a presentation title')
+      showToast('プレゼンテーションのタイトルを入力してください。', 'warning')
       return
     }
     
@@ -41,7 +43,7 @@ export default function Presentations(){
       
       // Create first slide and navigate to it
       const slideRes = await api.post('/slides', {
-        title: 'Slide 1',
+        title: 'スライド 1',
         content: { background: '#ffffff' },
         presentationId: res.data.id,
         orderIndex: 0
@@ -49,7 +51,7 @@ export default function Presentations(){
       nav(`/editor/${slideRes.data.id}`)
     }catch(err){ 
       console.error(err)
-      alert('Failed to create presentation')
+      showToast('プレゼンテーションの作成に失敗しました。', 'error')
     } finally {
       setCreating(false)
     }
@@ -57,14 +59,14 @@ export default function Presentations(){
 
   async function deletePresentation(id, e) {
     e.stopPropagation()
-    if (!confirm('Delete this presentation?')) return
+    if (!confirm('このプレゼンテーションを削除しますか？')) return
     
     try {
       await api.delete(`/presentations/${id}`)
       setPresentations(presentations.filter(p => p.id !== id))
     } catch (err) {
       console.error('Failed to delete:', err)
-      alert('Failed to delete presentation')
+      showToast('プレゼンテーションの削除に失敗しました。', 'error')
     }
   }
 
@@ -72,7 +74,7 @@ export default function Presentations(){
     if (p.firstSlideId) {
       nav(`/editor/${p.firstSlideId}`)
     } else {
-      alert('This presentation has no slides')
+      showToast('このプレゼンテーションにはスライドがありません。', 'warning')
     }
   }
 
@@ -81,14 +83,14 @@ export default function Presentations(){
       <div className="bg-white p-6 rounded shadow">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold">My Presentations</h2>
+            <h2 className="text-2xl font-bold">マイプレゼンテーション</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Logged in as: {JSON.parse(localStorage.getItem('user') || '{}').username || 'Unknown'}
+              ログイン中: {JSON.parse(localStorage.getItem('user') || '{}').username || 'Unknown'}
             </p>
           </div>
           <div className="flex gap-2">
             <input 
-              placeholder="New presentation title" 
+              placeholder="新しいプレゼンテーションのタイトル" 
               value={title} 
               onChange={(e)=>setTitle(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && !creating && create()}
@@ -100,13 +102,13 @@ export default function Presentations(){
               disabled={creating}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              {creating ? 'Creating...' : '+ New Presentation'}
+              {creating ? '作成中...' : '+ 新規プレゼンテーション'}
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
+          <div className="text-center py-12 text-gray-500">読み込み中...</div>
         ) : presentations.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-gray-400 mb-4">
@@ -114,8 +116,8 @@ export default function Presentations(){
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-gray-600 mb-4">No presentations yet</p>
-            <p className="text-sm text-gray-500">Create your first presentation or use a template</p>
+            <p className="text-gray-600 mb-4">まだプレゼンテーションがありません</p>
+            <p className="text-sm text-gray-500">最初のプレゼンテーションを作成するか、テンプレートを使用してください</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -149,7 +151,7 @@ export default function Presentations(){
                     {p.title}
                   </h3>
                   <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{p.slideCount || 0} slide{(p.slideCount || 0) !== 1 ? 's' : ''}</span>
+                    <span>{p.slideCount || 0} スライド</span>
                     <span>{new Date(p.updatedAt).toLocaleDateString()}</span>
                   </div>
                   
@@ -162,13 +164,13 @@ export default function Presentations(){
                       }}
                       className="flex-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
                     >
-                      Open
+                      開く
                     </button>
                     <button
                       onClick={(e) => deletePresentation(p.id, e)}
                       className="px-3 py-1.5 bg-red-500 text-white text-sm rounded hover:bg-red-600"
                     >
-                      Delete
+                      削除
                     </button>
                   </div>
                 </div>
