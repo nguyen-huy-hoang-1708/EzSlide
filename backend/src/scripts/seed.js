@@ -23,8 +23,8 @@ async function main(){
   
   const templateDefinitions = [
     {
-      name: 'Business Pitch Deck Pro',
-      category: 'Business',
+      name: 'ビジネスピッチデッキプロ',
+      category: 'ビジネス',
       thumbnail: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&h=300&fit=crop',
       theme: { colors: ['#1a56db', '#ffffff', '#f3f4f6'] },
       slides: [
@@ -166,8 +166,8 @@ async function main(){
     },
     // Template 2: Education
     {
-      name: 'Modern Education Course',
-      category: 'Education',
+      name: 'モダン教育コース',
+      category: '教育',
       thumbnail: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400&h=300&fit=crop',
       theme: { colors: ['#059669', '#ffffff', '#f0fdf4'] },
       slides: [
@@ -296,8 +296,8 @@ async function main(){
     },
     // Template 3: Marketing Strategy
     {
-      name: 'Marketing Strategy 2024',
-      category: 'Marketing',
+      name: 'マーケティング戦略 2024',
+      category: 'マーケティング',
       thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=300&fit=crop',
       theme: { colors: ['#dc2626', '#ffffff', '#fef2f2'] },
       slides: [

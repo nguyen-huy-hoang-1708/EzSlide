@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import PresentationMode from '../components/PresentationMode'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { useToast } from '../components/Toast'
 
 export default function Editor(){
@@ -32,6 +33,42 @@ export default function Editor(){
   // Presentation mode
   const [isPresentationMode, setIsPresentationMode] = useState(false)
   
+  // Track unsaved changes
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+
+  const getDraftSession = useCallback(() => {
+    return {
+      draftId: sessionStorage.getItem('draftPresentationId'),
+      draftSaved: sessionStorage.getItem('draftPresentationSaved') === 'true'
+    }
+  }, [])
+
+  const clearDraftSession = useCallback(() => {
+    sessionStorage.removeItem('draftPresentationId')
+    sessionStorage.removeItem('draftPresentationSaved')
+  }, [])
+
+  const cleanupDraftIfNeeded = useCallback(async () => {
+    const { draftId, draftSaved } = getDraftSession()
+    // Don't cleanup if already saved OR if presentation has slides (was successfully created from template)
+    if (!draftId || draftSaved || (presentation?.id && allSlides.length > 0)) return
+
+    try {
+      await api.delete(`/presentations/${draftId}`)
+      clearDraftSession()
+    } catch (err) {
+      console.error('Failed to clean up draft presentation:', err)
+    }
+  }, [clearDraftSession, getDraftSession, presentation, allSlides])
+  
+  // Confirm dialog states
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: null
+  })
+  
   // Drag state
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
@@ -46,6 +83,44 @@ export default function Editor(){
   useEffect(() => {
     loadSlide()
   }, [id])
+
+  // Mark as changed when elements, background, or backgroundImage changes
+  useEffect(() => {
+    if (slide) {
+      setHasUnsavedChanges(true)
+    }
+  }, [elements, background, backgroundImage])
+
+  // Warn before leaving page if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = '保存されていない変更があります。ページを離れますか？'
+        return e.returnValue
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
+
+  // Ensure drafts are cleaned up when the page is being hidden or closed
+  useEffect(() => {
+    const handlePageHide = () => cleanupDraftIfNeeded(true)
+    window.addEventListener('pagehide', handlePageHide)
+    return () => window.removeEventListener('pagehide', handlePageHide)
+  }, [cleanupDraftIfNeeded])
+
+  // Cleanup draft presentations ONLY when explicitly leaving editor (not on slide navigation)
+  // This prevents slides from being deleted when switching between them
+  useEffect(() => {
+    // No automatic cleanup on unmount since EditorNew unmounts on every slide change
+    // Cleanup only happens when user clicks back button or saves
+    return () => {
+      // Don't cleanup here - it runs on every slide navigation!
+    }
+  }, [])
 
   // Handle paste image from clipboard
   useEffect(() => {
@@ -120,6 +195,9 @@ export default function Editor(){
   }, [elements])
 
   async function loadSlide() {
+    console.log('=== LOADING SLIDE ===')
+    console.log('Slide ID from URL:', id)
+    
     if (id === 'new') {
       try {
         const res = await api.post('/slides', { 
@@ -135,9 +213,11 @@ export default function Editor(){
     }
 
     try {
+      console.log('Fetching slide:', id)
       // 1. Load the current slide
       const slideRes = await api.get(`/slides/${id}`)
       const currentSlide = slideRes.data
+      console.log('Loaded slide:', currentSlide.id, currentSlide.title)
       setSlide(currentSlide)
       
       // Parse content
@@ -159,45 +239,92 @@ export default function Editor(){
       
       // 3. Load the presentation to get all slides
       if (currentSlide.presentationId) {
+        console.log('Fetching presentation:', currentSlide.presentationId)
         const presRes = await api.get(`/presentations/${currentSlide.presentationId}`)
         setPresentation(presRes.data)
+        console.log('Loaded presentation:', presRes.data.id, 'with', presRes.data.slides?.length, 'slides')
+
+        const { draftId, draftSaved } = getDraftSession()
+        const isDraftFromTemplate = draftId && Number(draftId) === presRes.data.id
+        if (!isDraftFromTemplate && draftId) {
+          clearDraftSession()
+        }
         
         // Check if this is a template sample - warn user
-        if (presRes.data.title?.includes('Sample')) {
-          const shouldCopy = window.confirm(
-            '⚠️ テンプレートサンプルを編集しています！\n\n' +
-            '変更はすべてのユーザーのテンプレートに影響します。\n\n' +
-            'OKをクリックして自分のコピーを作成するか、キャンセルして直接テンプレートを編集します。'
-          )
+        if (presRes.data.title?.includes('サンプル') || presRes.data.title?.includes('Sample')) {
+          showToast('⚠️ テンプレートサンプルを編集しています！', 'warning')
           
-          if (shouldCopy) {
-            // Use template to create new presentation
-            const useRes = await api.post(`/templates/${presRes.data.templateId}/use`, {
-              title: presRes.data.title.replace(' - Sample', '')
-            })
-            
-            // Navigate to the new presentation's first slide
-            if (useRes.data.slides?.[0]?.id) {
-              navigate(`/editor/${useRes.data.slides[0].id}`, { replace: true })
-              return // Stop current load
+          setConfirmDialog({
+            isOpen: true,
+            title: 'テンプレートサンプルを編集',
+            message: '変更はすべてのユーザーのテンプレートに影響します。\n\n自分のコピーを作成しますか？',
+            confirmText: 'コピーを作成',
+            onConfirm: async () => {
+              try {
+                // Use template to create new presentation
+                const useRes = await api.post(`/templates/${presRes.data.templateId}/use`, {
+                  title: presRes.data.title.replace(' - サンプル', '').replace(' - Sample', '')
+                })
+                
+                // Navigate to the new presentation's first slide
+                if (useRes.data.slides?.[0]?.id) {
+                  showToast('新しいプレゼンテーションを作成しました！', 'success')
+                  navigate(`/editor/${useRes.data.slides[0].id}`, { replace: true })
+                  return // Stop current load
+                }
+              } catch (err) {
+                console.error('Failed to create copy:', err)
+                showToast('コピーの作成に失敗しました。', 'error')
+              }
             }
-          }
+          })
+          
+          // Don't continue loading if showing dialog
+          return
         }
         
         // Sort slides by orderIndex
         const slides = (presRes.data.slides || []).sort((a, b) => a.orderIndex - b.orderIndex)
         setAllSlides(slides)
+        console.log('All slides:', slides.map(s => ({ id: s.id, title: s.title })))
         
         // Find current slide index
         const idx = slides.findIndex(s => s.id === currentSlide.id)
         setCurrentSlideIndex(idx >= 0 ? idx : 0)
+        console.log('Current slide index:', idx)
       }
+      
+      // Reset unsaved changes flag after loading
+      setHasUnsavedChanges(false)
     } catch (err) {
       console.error('Failed to load slide:', err)
+      console.error('Error details:', err.response?.status, err.response?.data)
+      if (err.response?.status === 404) {
+        showToast('スライドが見つかりません', 'error')
+        navigate('/dashboard', { replace: true })
+      }
     }
   }
   
   function switchToSlide(slideId) {
+    console.log('=== SWITCH TO SLIDE ===')
+    console.log('Target slide ID:', slideId)
+    console.log('Current allSlides IDs:', allSlides.map(s => s.id))
+    
+    if (hasUnsavedChanges) {
+      setConfirmDialog({
+        isOpen: true,
+        title: '未保存の変更',
+        message: '保存されていない変更があります。\n\n別のスライドに移動すると、変更が失われます。\n\n続行しますか？',
+        confirmText: '続行',
+        onConfirm: () => {
+          setHasUnsavedChanges(false)
+          navigate(`/editor/${slideId}`)
+        }
+      })
+      return
+    }
+    setHasUnsavedChanges(false)
     navigate(`/editor/${slideId}`)
   }
 
@@ -333,6 +460,9 @@ export default function Editor(){
       }
       
       showToast('スライドを保存しました！', 'success')
+      sessionStorage.setItem('draftPresentationSaved', 'true')
+      clearDraftSession()
+      setHasUnsavedChanges(false)
     } catch (err) {
       console.error('Save failed:', err)
       showToast('スライドの保存に失敗しました: ' + (err.response?.data?.message || err.message), 'error')
@@ -340,48 +470,39 @@ export default function Editor(){
     setSaving(false)
   }
 
-  // Export presentation as JSON
-  function exportPresentation() {
+  // Export presentation as PPTX
+  async function exportPresentation() {
     if (!presentation || !allSlides.length) {
       showToast('エクスポートするプレゼンテーションがありません。', 'warning')
       return
     }
 
-    const exportData = {
-      presentation: {
-        title: presentation.title,
-        createdAt: presentation.createdAt,
-        updatedAt: presentation.updatedAt
-      },
-      slides: allSlides.map(s => {
-        let content = {}
-        try {
-          content = JSON.parse(s.content || '{}')
-        } catch (e) {
-          console.error('Failed to parse slide content')
-        }
-        return {
-          title: s.title,
-          orderIndex: s.orderIndex,
-          content,
-          // Note: elements would need to be fetched separately if needed
-        }
+    try {
+      showToast('エクスポート中...', 'info')
+      
+      // Call backend export API
+      const response = await api.get(`/presentations/${presentation.id}/export`, {
+        responseType: 'blob'
       })
+      
+      // Create download link
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' 
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${presentation.title || 'presentation'}.pptx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      
+      showToast('プレゼンテーションをエクスポートしました！', 'success')
+    } catch (err) {
+      console.error('Export failed:', err)
+      showToast('エクスポートに失敗しました。', 'error')
     }
-
-    // Create download link
-    const dataStr = JSON.stringify(exportData, null, 2)
-    const dataBlob = new Blob([dataStr], { type: 'application/json' })
-    const url = URL.createObjectURL(dataBlob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${presentation.title || 'presentation'}_${new Date().toISOString().split('T')[0]}.json`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    
-    showToast('プレゼンテーションをエクスポートしました！', 'success')
   }
 
   function addTextElement() {
@@ -672,21 +793,27 @@ export default function Editor(){
       return
     }
     
-    if (!confirm(`スライド「${slide.title}」を削除しますか？`)) return
-    
-    try {
-      await api.delete(`/slides/${slide.id}`)
-      // Navigate to previous or next slide
-      const nextSlide = allSlides[currentSlideIndex + 1] || allSlides[currentSlideIndex - 1]
-      if (nextSlide) {
-        navigate(`/editor/${nextSlide.id}`)
-      } else {
-        navigate('/dashboard')
+    setConfirmDialog({
+      isOpen: true,
+      title: 'スライド削除',
+      message: `スライド「${slide.title}」を削除しますか？`,
+      confirmText: '削除',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/slides/${slide.id}`)
+          // Navigate to previous or next slide
+          const nextSlide = allSlides[currentSlideIndex + 1] || allSlides[currentSlideIndex - 1]
+          if (nextSlide) {
+            navigate(`/editor/${nextSlide.id}`)
+          } else {
+            navigate('/dashboard')
+          }
+        } catch (err) {
+          console.error('Failed to delete slide:', err)
+          showToast('スライドの削除に失敗しました。', 'error')
+        }
       }
-    } catch (err) {
-      console.error('Failed to delete slide:', err)
-      showToast('スライドの削除に失敗しました。', 'error')
-    }
+    })
   }
 
   // Duplicate current slide
@@ -765,24 +892,70 @@ export default function Editor(){
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+      />
+      
       {/* Top Toolbar */}
       <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/dashboard')} className="text-gray-600 hover:text-gray-900">
+          <button 
+            onClick={() => {
+              if (hasUnsavedChanges) {
+                setConfirmDialog({
+                  isOpen: true,
+                  title: '未保存の変更',
+                  message: '保存されていない変更があります。\n\nダッシュボードに戻ると、変更が失われます。\n\n続行しますか？',
+                  confirmText: '続行',
+                  onConfirm: async () => {
+                    // Cleanup draft presentation if leaving without saving
+                    await cleanupDraftIfNeeded()
+                    navigate('/dashboard')
+                  }
+                })
+                return
+              }
+              // Also cleanup when leaving without unsaved changes (but might have draft)
+              cleanupDraftIfNeeded()
+              navigate('/dashboard')
+            }} 
+            className="text-gray-600 hover:text-gray-900"
+          >
             ← 戻る
           </button>
           <input 
             type="text" 
             value={slide?.title || ''} 
-            onChange={(e) => setSlide({...slide, title: e.target.value})}
+            onChange={(e) => {
+              setSlide({...slide, title: e.target.value})
+              setHasUnsavedChanges(true)
+            }}
             className="text-lg font-semibold border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none px-2"
           />
+          {hasUnsavedChanges && (
+            <span className="text-sm text-orange-600 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              未保存
+            </span>
+          )}
         </div>
         <div className="flex gap-2">
           <button 
             onClick={saveSlide} 
             disabled={saving}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            className={`px-4 py-2 rounded disabled:opacity-50 ${
+              hasUnsavedChanges 
+                ? 'bg-green-500 text-white hover:bg-green-600 shadow-md' 
+                : 'bg-gray-300 text-gray-600'
+            }`}
           >
             {saving ? '保存中...' : '保存'}
           </button>

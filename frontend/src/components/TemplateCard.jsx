@@ -16,15 +16,32 @@ export default function TemplateCard({ template }){
         title: `My ${template.name}`
       })
       
+      console.log('=== TEMPLATE USE RESPONSE ===')
+      console.log('Presentation ID:', response.data?.id)
+      console.log('Slides count:', response.data?.slides?.length)
+      console.log('First slide ID:', response.data?.slides?.[0]?.id)
+      console.log('All slide IDs:', response.data?.slides?.map(s => s.id))
+      
+      if (!response.data || !response.data.id) {
+        throw new Error('Invalid response from server')
+      }
+      
+      // Mark draft to clean up if user leaves without saving
+      sessionStorage.setItem('draftPresentationId', String(response.data.id))
+      sessionStorage.setItem('draftPresentationSaved', 'false')
+      
       // Navigate to the first slide of the new presentation
       if (response.data.slides && response.data.slides.length > 0) {
-        navigate(`/editor/${response.data.slides[0].id}`)
+        const firstSlideId = response.data.slides[0].id
+        console.log('Navigating to slide:', firstSlideId)
+        navigate(`/editor/${firstSlideId}`)
       } else {
-        navigate(`/presentations/${response.data.id}`)
+        showToast('テンプレートにスライドがありません', 'warning')
+        navigate('/dashboard')
       }
     } catch (error) {
       console.error('Failed to use template:', error)
-      showToast('テンプレートからプレゼンテーションの作成に失敗しました。', 'error')
+      showToast('テンプレートの使用に失敗しました', 'error')
     } finally {
       setLoading(false)
     }

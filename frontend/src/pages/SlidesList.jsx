@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useToast } from '../components/Toast'
 
+// Original Slides (suraido) view with its own card and logic
 export default function SlidesList(){
   const [templates, setTemplates] = useState([])
   const [q, setQ] = useState('')
@@ -34,14 +35,22 @@ export default function SlidesList(){
         title: `My ${templateName}`
       })
       
+      if (!response.data || !response.data.id) {
+        throw new Error('Invalid response from server')
+      }
+      
+      sessionStorage.setItem('draftPresentationId', String(response.data.id))
+      sessionStorage.setItem('draftPresentationSaved', 'false')
+      
       if (response.data.slides && response.data.slides.length > 0) {
         navigate(`/editor/${response.data.slides[0].id}`)
       } else {
-        navigate(`/presentations/${response.data.id}`)
+        showToast('テンプレートにスライドがありません', 'warning')
+        navigate('/dashboard')
       }
     } catch (error) {
       console.error('Failed to use template:', error)
-      showToast('テンプレートからプレゼンテーションの作成に失敗しました。', 'error')
+      showToast('テンプレートの使用に失敗しました', 'error')
     } finally {
       setLoading(false)
     }

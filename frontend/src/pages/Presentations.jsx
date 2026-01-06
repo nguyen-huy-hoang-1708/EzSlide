@@ -3,12 +3,14 @@ import Layout from '../components/Layout'
 import api from '../services/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { useToast } from '../components/Toast'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Presentations(){
   const [presentations, setPresentations] = useState([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, confirmText: 'OK' })
   const nav = useNavigate()
   const { showToast } = useToast()
 
@@ -59,15 +61,22 @@ export default function Presentations(){
 
   async function deletePresentation(id, e) {
     e.stopPropagation()
-    if (!confirm('このプレゼンテーションを削除しますか？')) return
-    
-    try {
-      await api.delete(`/presentations/${id}`)
-      setPresentations(presentations.filter(p => p.id !== id))
-    } catch (err) {
-      console.error('Failed to delete:', err)
-      showToast('プレゼンテーションの削除に失敗しました。', 'error')
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'プレゼンテーション削除',
+      message: 'このプレゼンテーションを削除しますか？',
+      confirmText: '削除',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/presentations/${id}`)
+          setPresentations(presentations.filter(p => p.id !== id))
+          showToast('プレゼンテーションを削除しました。', 'success')
+        } catch (err) {
+          console.error('Failed to delete:', err)
+          showToast('プレゼンテーションの削除に失敗しました。', 'error')
+        }
+      }
+    })
   }
 
   function openPresentation(p) {
@@ -80,6 +89,15 @@ export default function Presentations(){
 
   return (
     <Layout>
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+      />
+
       <div className="bg-white p-6 rounded shadow">
         <div className="flex items-center justify-between mb-6">
           <div>

@@ -5,6 +5,7 @@ import FilterPanel from '../components/FilterPanel'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
+// Restore original Templates view with side filter panel
 export default function Templates(){
   const navigate = useNavigate()
   const [allTemplates, setAllTemplates] = useState([])

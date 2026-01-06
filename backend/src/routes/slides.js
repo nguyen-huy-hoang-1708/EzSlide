@@ -50,7 +50,15 @@ router.post('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const id = Number(req.params.id)
   const slide = await prisma.slide.findUnique({ where: { id }, include: { presentation: true } })
-  if (!slide || slide.presentation.userId !== req.userId) return res.status(404).json({ message: 'Not found' })
+  if (!slide) {
+    console.error(`Slide ${id} not found in database`)
+    return res.status(404).json({ message: 'Slide not found' })
+  }
+  if (slide.presentation.userId !== req.userId) {
+    console.error(`Permission denied: slide ${id} belongs to userId=${slide.presentation.userId}, requested by userId=${req.userId}`)
+    return res.status(404).json({ message: 'Not found' })
+  }
+  console.log(`✅ GET /slides/${id} - presentationId=${slide.presentationId}`)
   res.json(slide)
 })
 
