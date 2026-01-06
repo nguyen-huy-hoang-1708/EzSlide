@@ -287,4 +287,36 @@ router.get('/:id/export', async (req, res) => {
   }
 })
 
+// Create new slide in presentation
+router.post('/:id/slides', async (req, res) => {
+  try {
+    const presentationId = Number(req.params.id)
+    const { title, content, orderIndex } = req.body
+    
+    // Verify presentation exists and belongs to user
+    const presentation = await prisma.presentation.findUnique({
+      where: { id: presentationId }
+    })
+    
+    if (!presentation || presentation.userId !== req.userId) {
+      return res.status(404).json({ message: 'Presentation not found' })
+    }
+    
+    // Create slide
+    const slide = await prisma.slide.create({
+      data: {
+        presentationId,
+        title: title || 'Untitled Slide',
+        content: content || JSON.stringify({ background: '#ffffff' }),
+        orderIndex: orderIndex ?? 0
+      }
+    })
+    
+    res.json(slide)
+  } catch (error) {
+    console.error('Create slide error:', error)
+    res.status(500).json({ message: 'Failed to create slide' })
+  }
+})
+
 export default router

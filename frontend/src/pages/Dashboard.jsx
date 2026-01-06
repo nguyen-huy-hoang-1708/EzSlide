@@ -25,8 +25,23 @@ export default function Dashboard(){
     }
   }
 
-  function createNew(){
-    navigate('/editor/new')
+  async function createNew() {
+    try {
+      const presRes = await api.post('/presentations', {
+        title: '新規プレゼンテーション'
+      })
+      
+      const slideRes = await api.post(`/presentations/${presRes.data.id}/slides`, {
+        title: 'スライド 1',
+        content: JSON.stringify({ background: '#ffffff' }),
+        orderIndex: 0
+      })
+      
+      navigate(`/editor/${slideRes.data.id}`)
+    } catch (err) {
+      console.error('Failed to create presentation:', err)
+      alert('プレゼンテーションの作成に失敗しました')
+    }
   }
 
   return (
